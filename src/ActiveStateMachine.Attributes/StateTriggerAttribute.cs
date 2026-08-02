@@ -5,7 +5,7 @@ namespace ActiveStateMachine.Attributes
     /// <summary>
     /// Marks a partial method as the public entry point for a state machine trigger.
     /// The source generator implements the method body so that calling it enqueues a
-    /// message onto the Active Object's mailbox and fires the associated trigger on the
+    /// message onto the Active Object's message queue and fires the associated trigger on the
     /// worker thread.
     /// </summary>
     /// <remarks>

@@ -1,55 +1,31 @@
 using ActiveStateMachine.Example;
 
-Console.WriteLine("=== ActiveStateMachine — Phone Example ===");
-Console.WriteLine();
+Console.WriteLine("Starting Modern .NET Active Object Telephone Simulation...\n");
 
-await using var phone = new PhoneActiveObject(PhoneState.OffHook);
-Console.WriteLine($"Initial state: {phone.State}");
-
-Console.WriteLine("\n> DialAsync(\"555-1234\")");
-await phone.DialAsync("555-1234");
-Console.WriteLine($"State: {phone.State}");
-
-Console.WriteLine("\n> ConnectCallAsync()");
-await phone.ConnectCallAsync();
-Console.WriteLine($"State: {phone.State}");
-
-Console.WriteLine("\n> PlaceOnHoldAsync()");
-await phone.PlaceOnHoldAsync();
-Console.WriteLine($"State: {phone.State}");
-
-Console.WriteLine("\n> TakeOffHoldAsync()");
-await phone.TakeOffHoldAsync();
-Console.WriteLine($"State: {phone.State}");
-
-Console.WriteLine("\n> HangUpAsync()");
-await phone.HangUpAsync();
-Console.WriteLine($"State: {phone.State}");
-
-// Demonstrate that an invalid trigger surfaces as a faulted Task (exception propagates
-// back to the caller through the mailbox), without tearing down the worker loop.
-Console.WriteLine("\n> ConnectCallAsync() while OffHook (invalid transition)");
-try
+// 'await using' ensures proper disposal and draining of the message queue.
+await using (var phone = new PhoneActiveObject(PhoneState.OffHook))
 {
+    // Because of the Active Object pattern, callers simply await logical methods.
+    // Under the hood, this converts to immutable records traversing an asynchronous queue.
+
+    await phone.DialAsync("555-0199");
+    await Task.Delay(500); // Simulating time between user actions
+
     await phone.ConnectCallAsync();
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Caught expected exception: {ex.GetType().Name}");
-}
-Console.WriteLine($"State after error: {phone.State}");
+    await Task.Delay(500);
 
-// Demonstrate ordering / thread-affinity: fire a burst of triggers and confirm they are
-// processed serially on the single worker in submission order.
-Console.WriteLine("\n> Concurrency check: dialing + connecting from many threads");
-await phone.DialAsync("555-9999");
-var tasks = new List<Task>
-{
-    phone.ConnectCallAsync(),
-    phone.PlaceOnHoldAsync(),
-    phone.HurlAgainstWallAsync(),
-};
-await Task.WhenAll(tasks);
-Console.WriteLine($"Final state: {phone.State}");
+    await phone.PutOnHoldAsync();
+    await Task.Delay(500);
 
-Console.WriteLine("\nDisposing (drains mailbox and stops worker)...");
+    await phone.TakeOffHoldAsync();
+    await Task.Delay(500);
+
+    // Attempting an invalid action (dialing while connected). The unhandled-trigger callback
+    // catches this gracefully without crashing the worker loop.
+    await phone.DialAsync("123-4567");
+
+    await phone.HangUpAsync();
+    await Task.Delay(500);
+}
+
+Console.WriteLine("\nSimulation Complete.");

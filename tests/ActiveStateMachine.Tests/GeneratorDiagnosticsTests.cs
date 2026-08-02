@@ -36,7 +36,7 @@ public class GeneratorDiagnosticsTests
             """);
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
-        Assert.Contains(generated, s => s.Contains("_trigger_DialAsync"));
+        Assert.Contains(generated, s => s.Contains("TriggerDialAsync"));
         Assert.Contains(generated, s => s.Contains("public partial global::System.Threading.Tasks.Task HangUpAsync()"));
     }
 

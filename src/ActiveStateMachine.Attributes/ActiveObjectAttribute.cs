@@ -4,7 +4,7 @@ namespace ActiveStateMachine.Attributes
 {
     /// <summary>
     /// Marks a partial class as an Active Object backed by a Stateless state machine and a
-    /// Channel-based mailbox. The source generator emits the state machine, mailbox, worker
+    /// Channel-based message queue. The source generator emits the state machine, mailbox, worker
     /// loop and message plumbing for the class.
     /// </summary>
     /// <remarks>

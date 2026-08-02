@@ -31,7 +31,7 @@ namespace ActiveStateMachine.Generators
 
             // --- 1. Fields ---
             sb.AppendLine($"{b}private readonly {machine} _machine;");
-            sb.AppendLine($"{b}private readonly {channelType} _mailbox;");
+            sb.AppendLine($"{b}private readonly {channelType} _messageQueue;");
             sb.AppendLine($"{b}private readonly global::System.Threading.Tasks.Task _workerTask;");
             sb.AppendLine($"{b}private readonly global::System.Threading.CancellationTokenSource _cts;");
 
@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Generators
             {
                 string generics = string.Join(", ", method.Parameters.Select(p => p.Type));
                 sb.AppendLine(
-                    $"{b}private readonly {machine}.TriggerWithParameters<{generics}> _trigger_{method.Name};");
+                    $"{b}private readonly {machine}.TriggerWithParameters<{generics}> Trigger{method.Name};");
             }
 
             sb.AppendLine();
@@ -73,12 +73,12 @@ namespace ActiveStateMachine.Generators
             {
                 string generics = string.Join(", ", method.Parameters.Select(p => p.Type));
                 sb.AppendLine(
-                    $"{b}    _trigger_{method.Name} = _machine.SetTriggerParameters<{generics}>({method.Trigger});");
+                    $"{b}    Trigger{method.Name} = _machine.SetTriggerParameters<{generics}>({method.Trigger});");
             }
 
             sb.AppendLine($"{b}    ConfigureStateMachine();");
             sb.AppendLine();
-            sb.AppendLine($"{b}    _mailbox = global::System.Threading.Channels.Channel.CreateUnbounded<{messageBase}>(new global::System.Threading.Channels.UnboundedChannelOptions {{ SingleReader = true }});");
+            sb.AppendLine($"{b}    _messageQueue = global::System.Threading.Channels.Channel.CreateUnbounded<{messageBase}>(new global::System.Threading.Channels.UnboundedChannelOptions {{ SingleReader = true }});");
             sb.AppendLine($"{b}    _cts = new global::System.Threading.CancellationTokenSource();");
             sb.AppendLine($"{b}    _workerTask = global::System.Threading.Tasks.Task.Run(ProcessMailboxAsync);");
             sb.AppendLine($"{b}}}");
@@ -93,7 +93,7 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}{{");
             sb.AppendLine($"{b}    try");
             sb.AppendLine($"{b}    {{");
-            sb.AppendLine($"{b}        await foreach (var msg in _mailbox.Reader.ReadAllAsync(_cts.Token).ConfigureAwait(false))");
+            sb.AppendLine($"{b}        await foreach (var msg in _messageQueue.Reader.ReadAllAsync(_cts.Token).ConfigureAwait(false))");
             sb.AppendLine($"{b}        {{");
             sb.AppendLine($"{b}            try");
             sb.AppendLine($"{b}            {{");
@@ -120,9 +120,9 @@ namespace ActiveStateMachine.Generators
                 sb.AppendLine($"{b}{method.Accessibility} partial global::System.Threading.Tasks.Task {method.Name}({sigParams})");
                 sb.AppendLine($"{b}{{");
                 sb.AppendLine($"{b}    var __msg = new {method.Name}Message({ctorArgs});");
-                sb.AppendLine($"{b}    return _mailbox.Writer.TryWrite(__msg)");
+                sb.AppendLine($"{b}    return _messageQueue.Writer.TryWrite(__msg)");
                 sb.AppendLine($"{b}        ? __msg.Completion");
-                sb.AppendLine($"{b}        : global::System.Threading.Tasks.Task.FromException(new global::System.InvalidOperationException(\"The Active Object mailbox is closed; the object has been disposed.\"));");
+                sb.AppendLine($"{b}        : global::System.Threading.Tasks.Task.FromException(new global::System.InvalidOperationException(\"Active Object message queue is closed.\"));");
                 sb.AppendLine($"{b}}}");
                 sb.AppendLine();
             }
@@ -130,7 +130,7 @@ namespace ActiveStateMachine.Generators
             // --- 8. Async disposal ---
             sb.AppendLine($"{b}public async global::System.Threading.Tasks.ValueTask DisposeAsync()");
             sb.AppendLine($"{b}{{");
-            sb.AppendLine($"{b}    _mailbox.Writer.TryComplete();");
+            sb.AppendLine($"{b}    _messageQueue.Writer.TryComplete();");
             sb.AppendLine($"{b}    try");
             sb.AppendLine($"{b}    {{");
             sb.AppendLine($"{b}        await _workerTask.ConfigureAwait(false);");
@@ -160,7 +160,7 @@ namespace ActiveStateMachine.Generators
             }
 
             string args = string.Join(", ", method.Parameters.Select(p => p.Name));
-            return $"ao._machine.Fire(ao._trigger_{method.Name}, {args})";
+            return $"ao._machine.Fire(ao.Trigger{method.Name}, {args})";
         }
     }
 }

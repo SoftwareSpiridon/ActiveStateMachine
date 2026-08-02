@@ -27,7 +27,7 @@ public class PhoneActiveObjectTests
         await phone.ConnectCallAsync();
         Assert.Equal(PhoneState.Connected, phone.State);
 
-        await phone.PlaceOnHoldAsync();
+        await phone.PutOnHoldAsync();
         Assert.Equal(PhoneState.OnHold, phone.State);
 
         await phone.TakeOffHoldAsync();
@@ -38,12 +38,15 @@ public class PhoneActiveObjectTests
     }
 
     [Fact]
-    public async Task Invalid_trigger_faults_the_returned_task_without_killing_worker()
+    public async Task Invalid_trigger_is_ignored_and_worker_survives()
     {
         await using var phone = new PhoneActiveObject(PhoneState.OffHook);
 
-        // ConnectCall is not permitted from OffHook.
-        await Assert.ThrowsAsync<InvalidOperationException>(() => phone.ConnectCallAsync());
+        // ConnectCall is not permitted from OffHook. Because the machine configures
+        // OnUnhandledTrigger, the call completes successfully (ignored) and the state is
+        // unchanged rather than throwing.
+        await phone.ConnectCallAsync();
+        Assert.Equal(PhoneState.OffHook, phone.State);
 
         // The worker survives: a subsequent valid call still works.
         await phone.DialAsync("555-2222");
@@ -58,13 +61,13 @@ public class PhoneActiveObjectTests
         await phone.DialAsync("555-3333");
 
         // Fire a burst without awaiting individually; they must apply in order:
-        // Connected -> OnHold -> PhoneDestroyed.
+        // Connected -> OnHold -> back to Connected.
         var t1 = phone.ConnectCallAsync();
-        var t2 = phone.PlaceOnHoldAsync();
-        var t3 = phone.HurlAgainstWallAsync();
+        var t2 = phone.PutOnHoldAsync();
+        var t3 = phone.TakeOffHoldAsync();
         await Task.WhenAll(t1, t2, t3);
 
-        Assert.Equal(PhoneState.PhoneDestroyed, phone.State);
+        Assert.Equal(PhoneState.Connected, phone.State);
     }
 
     [Fact]
