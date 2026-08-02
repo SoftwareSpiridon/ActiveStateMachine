@@ -1,0 +1,161 @@
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace ActiveStateMachine.Generators
+{
+    [Generator(LanguageNames.CSharp)]
+    public sealed class ActiveObjectGenerator : IIncrementalGenerator
+    {
+        private const string ActiveObjectAttributeName = "ActiveStateMachine.Attributes.ActiveObjectAttribute";
+        private const string StateTriggerAttributeName = "ActiveStateMachine.Attributes.StateTriggerAttribute";
+        private const string TaskTypeName = "System.Threading.Tasks.Task";
+        private const int MaxParameters = 3;
+
+        public void Initialize(IncrementalGeneratorInitializationContext context)
+        {
+            IncrementalValuesProvider<GenerationResult> results = context.SyntaxProvider
+                .ForAttributeWithMetadataName(
+                    ActiveObjectAttributeName,
+                    predicate: static (node, _) => node is ClassDeclarationSyntax,
+                    transform: static (ctx, _) => Transform(ctx))
+                .Where(static r => r is not null)
+                .Select(static (r, _) => r!);
+
+            context.RegisterSourceOutput(results, static (spc, result) =>
+            {
+                foreach (DiagnosticInfo diagnostic in result.Diagnostics)
+                {
+                    spc.ReportDiagnostic(diagnostic.ToDiagnostic());
+                }
+
+                if (result.Info is { } info)
+                {
+                    string source = Emitter.Emit(info);
+                    spc.AddSource($"{info.ClassName}.g.cs", source);
+                }
+            });
+        }
+
+        private static GenerationResult? Transform(GeneratorAttributeSyntaxContext context)
+        {
+            if (context.TargetSymbol is not INamedTypeSymbol classSymbol ||
+                context.TargetNode is not ClassDeclarationSyntax classSyntax)
+            {
+                return null;
+            }
+
+            var diagnostics = new List<DiagnosticInfo>();
+
+            // Rule: the class must be partial.
+            bool isPartial = classSyntax.Modifiers.Any(SyntaxKind.PartialKeyword);
+            if (!isPartial)
+            {
+                diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NotPartial, classSyntax, classSymbol.Name));
+            }
+
+            // Read the [ActiveObject(stateType, triggerType)] arguments.
+            AttributeData attribute = context.Attributes[0];
+            if (attribute.ConstructorArguments.Length < 2 ||
+                attribute.ConstructorArguments[0].Value is not ITypeSymbol stateType ||
+                attribute.ConstructorArguments[1].Value is not ITypeSymbol triggerType)
+            {
+                return new GenerationResult(null, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+            }
+
+            string stateTypeName = stateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            string triggerTypeName = triggerType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            var methods = new List<TriggerMethodInfo>();
+            foreach (IMethodSymbol method in classSymbol.GetMembers().OfType<IMethodSymbol>())
+            {
+                AttributeData? triggerAttribute = method.GetAttributes().FirstOrDefault(
+                    a => a.AttributeClass?.ToDisplayString() == StateTriggerAttributeName);
+                if (triggerAttribute is null)
+                {
+                    continue;
+                }
+
+                SyntaxNode? methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+
+                // Rule: the method must return Task.
+                if (method.ReturnType.ToDisplayString() != TaskTypeName)
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustReturnTask, methodSyntax, method.Name));
+                    continue;
+                }
+
+                // Rule: the method must be partial.
+                if (methodSyntax is MethodDeclarationSyntax mds && !mds.Modifiers.Any(SyntaxKind.PartialKeyword))
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustBePartial, methodSyntax, method.Name));
+                    continue;
+                }
+
+                // Rule: at most 3 parameters.
+                if (method.Parameters.Length > MaxParameters)
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(
+                        Diagnostics.TooManyParameters, methodSyntax, method.Name, method.Parameters.Length.ToString()));
+                    continue;
+                }
+
+                // Resolve the trigger value text, e.g. "PhoneTrigger.CallDialed".
+                string? triggerText = triggerAttribute.ConstructorArguments.Length > 0
+                    ? triggerAttribute.ConstructorArguments[0].Value as string
+                    : null;
+                if (string.IsNullOrWhiteSpace(triggerText))
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MissingTrigger, methodSyntax, method.Name));
+                    continue;
+                }
+
+                // Normalize to a fully-qualified enum member: global::Ns.PhoneTrigger.CallDialed
+                string member = triggerText!.Substring(triggerText.LastIndexOf('.') + 1).Trim();
+                string qualifiedTrigger = $"{triggerTypeName}.{member}";
+
+                var parameters = method.Parameters
+                    .Select(p => new ParameterInfo(
+                        p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        p.Name))
+                    .ToArray();
+
+                methods.Add(new TriggerMethodInfo(
+                    method.Name,
+                    AccessibilityText(method.DeclaredAccessibility),
+                    qualifiedTrigger,
+                    new EquatableArray<ParameterInfo>(parameters)));
+            }
+
+            string? ns = classSymbol.ContainingNamespace.IsGlobalNamespace
+                ? null
+                : classSymbol.ContainingNamespace.ToDisplayString();
+
+            var info = new ActiveObjectInfo(
+                ns,
+                classSymbol.Name,
+                AccessibilityText(classSymbol.DeclaredAccessibility),
+                stateTypeName,
+                triggerTypeName,
+                new EquatableArray<TriggerMethodInfo>(methods.ToArray()));
+
+            return new GenerationResult(info, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+        }
+
+        private static string AccessibilityText(Accessibility accessibility) => accessibility switch
+        {
+            Accessibility.Public => "public",
+            Accessibility.Internal => "internal",
+            Accessibility.Protected => "protected",
+            Accessibility.ProtectedOrInternal => "protected internal",
+            Accessibility.ProtectedAndInternal => "private protected",
+            Accessibility.Private => "private",
+            _ => "internal",
+        };
+
+        internal sealed record GenerationResult(ActiveObjectInfo? Info, EquatableArray<DiagnosticInfo> Diagnostics);
+    }
+}

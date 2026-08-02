@@ -1,0 +1,133 @@
+using System.Collections.Immutable;
+using ActiveStateMachine.Attributes;
+using ActiveStateMachine.Generators;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Xunit;
+
+namespace ActiveStateMachine.Tests;
+
+public class GeneratorDiagnosticsTests
+{
+    private const string Preamble = """
+        using System.Threading.Tasks;
+        using ActiveStateMachine.Attributes;
+
+        public enum PhoneState { OffHook, Ringing }
+        public enum PhoneTrigger { CallDialed, HungUp }
+        """;
+
+    [Fact]
+    public void Valid_class_generates_source_without_diagnostics()
+    {
+        var (diagnostics, generated) = RunGenerator(Preamble + """
+
+            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger("PhoneTrigger.CallDialed")]
+                public partial Task DialAsync(string number);
+
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public partial Task HangUpAsync();
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+        Assert.Contains(generated, s => s.Contains("_trigger_DialAsync"));
+        Assert.Contains(generated, s => s.Contains("public partial global::System.Threading.Tasks.Task HangUpAsync()"));
+    }
+
+    [Fact]
+    public void Non_partial_class_reports_ASM001()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            public class Phone
+            {
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public partial Task HangUpAsync();
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM001");
+    }
+
+    [Fact]
+    public void Non_task_trigger_method_reports_ASM002()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public partial void HangUp();
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM002");
+    }
+
+    [Fact]
+    public void Too_many_parameters_reports_ASM003()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                [StateTrigger("PhoneTrigger.CallDialed")]
+                public partial Task DialAsync(int a, int b, int c, int d);
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM003");
+    }
+
+    [Fact]
+    public void Non_partial_trigger_method_reports_ASM004()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public Task HangUpAsync() => Task.CompletedTask;
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM004");
+    }
+
+    private static (ImmutableArray<Diagnostic> Diagnostics, string[] Generated) RunGenerator(string source)
+    {
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator)
+            .Where(p => p.Length > 0)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
+            .Append(MetadataReference.CreateFromFile(typeof(ActiveObjectAttribute).Assembly.Location))
+            .Append(MetadataReference.CreateFromFile(typeof(Stateless.StateMachine<,>).Assembly.Location))
+            .ToList();
+
+        var compilation = CSharpCompilation.Create(
+            "TestAssembly",
+            new[] { CSharpSyntaxTree.ParseText(source) },
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var driver = CSharpGeneratorDriver.Create(new ActiveObjectGenerator());
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var diagnostics);
+
+        var generated = outputCompilation.SyntaxTrees
+            .Where(t => t.FilePath.EndsWith(".g.cs"))
+            .Select(t => t.ToString())
+            .ToArray();
+
+        return (diagnostics, generated);
+    }
+}

@@ -1,0 +1,2 @@
+namespace ActiveStateMachine.Example;
+
