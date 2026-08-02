@@ -5,10 +5,12 @@ contains:
 
 | Path in package | Content | Role |
 | --- | --- | --- |
-| `lib/netstandard2.0/ActiveStateMachine.Attributes.dll` (+ `.xml`) | `[ActiveObject]`, `[StateTrigger]` | Normal reference (compile + runtime) |
-| `analyzers/dotnet/cs/ActiveStateMachine.Generators.dll` | The incremental source generator | Loaded as a Roslyn analyzer |
+| `analyzers/dotnet/cs/ActiveStateMachine.Generators.dll` | The incremental source generator (also injects the `[ActiveObject]`/`[StateTrigger]` attributes) | Loaded as a Roslyn analyzer |
 | dependency `Stateless >= 5.15.0` | — | Flows to consumers (generated code uses it) |
 | `README.md` | — | Package landing page |
+
+The package is **analyzer-only**: there is no `lib/` assembly. The marker attributes are emitted into
+each consuming compilation at build time, so nothing needs to be referenced beyond this one package.
 
 So a consumer needs a single reference:
 
@@ -16,7 +18,7 @@ So a consumer needs a single reference:
 <PackageReference Include="ActiveStateMachine" Version="1.0.0" />
 ```
 
-Packaging is driven from [`src/ActiveStateMachine.Attributes/ActiveStateMachine.Attributes.csproj`](src/ActiveStateMachine.Attributes/ActiveStateMachine.Attributes.csproj);
+Packaging is driven from [`src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj`](src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj);
 shared metadata lives in [`Directory.Build.props`](Directory.Build.props).
 
 ---
@@ -40,19 +42,17 @@ Bump `<VersionPrefix>` in [`Directory.Build.props`](Directory.Build.props) for e
 (follow [SemVer](https://semver.org/)). For a pre-release, add a suffix at pack time:
 
 ```bash
-dotnet pack src/ActiveStateMachine.Attributes -c Release -o artifacts --version-suffix preview.1
+dotnet pack src/ActiveStateMachine.Generators -c Release -o artifacts --version-suffix preview.1
 ```
 
 ## 3. Build the package
 
 ```bash
-dotnet pack src/ActiveStateMachine.Attributes -c Release -o artifacts
+dotnet pack src/ActiveStateMachine.Generators -c Release -o artifacts
 ```
 
-This produces two files in `artifacts/`:
-
-- `ActiveStateMachine.<version>.nupkg` — the package
-- `ActiveStateMachine.<version>.snupkg` — the symbol package (debug symbols)
+This produces `ActiveStateMachine.<version>.nupkg` in `artifacts/`. (The package is analyzer-only and
+ships no symbol package.)
 
 Inspect the contents before pushing (a `.nupkg` is a zip):
 
@@ -83,8 +83,7 @@ dotnet nuget push artifacts/ActiveStateMachine.1.0.0.nupkg \
   --source https://api.nuget.org/v3/index.json
 ```
 
-Pushing the `.nupkg` automatically pushes the matching `.snupkg` symbols. It can take a few minutes
-for nuget.org to finish validating and index the package.
+It can take a few minutes for nuget.org to finish validating and index the package.
 
 ## 6. Verify
 
@@ -108,7 +107,7 @@ and set `<PublishRepositoryUrl>true</PublishRepositoryUrl>` plus
 
 ```bash
 # From the repo root
-dotnet pack src/ActiveStateMachine.Attributes -c Release -o artifacts
+dotnet pack src/ActiveStateMachine.Generators -c Release -o artifacts
 ```
 
 Test the freshly built package locally without publishing by pointing a scratch project's

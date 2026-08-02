@@ -21,7 +21,6 @@
     <ProjectReference Include="..\..\samples\ActiveStateMachine.Example\ActiveStateMachine.Example.csproj" />
     <!-- Diagnostic tests drive the generator directly. -->
     <ProjectReference Include="..\..\src\ActiveStateMachine.Generators\ActiveStateMachine.Generators.csproj" />
-    <ProjectReference Include="..\..\src\ActiveStateMachine.Attributes\ActiveStateMachine.Attributes.csproj" />
   </ItemGroup>
 
 </Project>

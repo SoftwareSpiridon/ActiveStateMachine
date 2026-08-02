@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using ActiveStateMachine.Attributes;
 using ActiveStateMachine.Generators;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -38,6 +37,21 @@ public class GeneratorDiagnosticsTests
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
         Assert.Contains(generated, s => s.Contains("TriggerDialAsync"));
         Assert.Contains(generated, s => s.Contains("public partial global::System.Threading.Tasks.Task HangUpAsync()"));
+    }
+
+    [Fact]
+    public void Marker_attributes_are_auto_emitted_into_the_compilation()
+    {
+        // A bare compilation with no [ActiveObject] usage and no attributes reference at all.
+        var (diagnostics, generated) = RunGenerator("public class Empty { }");
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+
+        // The generator still injects the marker attributes via post-initialization output.
+        string attributes = Assert.Single(generated, s => s.Contains("class ActiveObjectAttribute"));
+        Assert.Contains("namespace ActiveStateMachine.Attributes", attributes);
+        Assert.Contains("internal sealed class ActiveObjectAttribute", attributes);
+        Assert.Contains("internal sealed class StateTriggerAttribute", attributes);
     }
 
     [Fact]
@@ -106,11 +120,12 @@ public class GeneratorDiagnosticsTests
 
     private static (ImmutableArray<Diagnostic> Diagnostics, string[] Generated) RunGenerator(string source)
     {
+        // Note: no reference to any attributes assembly — the generator injects the marker
+        // attributes into the compilation itself, which is exactly what these tests exercise.
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator)
             .Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p))
-            .Append(MetadataReference.CreateFromFile(typeof(ActiveObjectAttribute).Assembly.Location))
             .Append(MetadataReference.CreateFromFile(typeof(Stateless.StateMachine<,>).Assembly.Location))
             .ToList();
 

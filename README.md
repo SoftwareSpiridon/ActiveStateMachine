@@ -79,14 +79,17 @@ public partial class PhoneActiveObject : IAsyncDisposable
   worker cleanly.
 - 🚦 **Compile-time diagnostics** — misuse (non-`partial`, wrong return type, too many parameters…)
   becomes a build error, not a runtime surprise.
-- 📦 **Analyzer packaging ready** — the generator project is configured to ship as a NuGet analyzer.
+- 📦 **Analyzer-only package** — the marker attributes are injected into your compilation by the
+  generator, so there is no attributes assembly to reference; the only dependency is `Stateless`.
 - 🪶 **No reflection, no runtime magic** — everything is plain C# you can read in the generated file.
 
 ## How it works
 
-The `[ActiveObject]` attribute marks a class; the generator discovers it, reads the state/trigger
-enums and every `[StateTrigger]` method, and emits a `{ClassName}.g.cs` partial that completes the
-class. At runtime, a call flows through the mailbox to the single worker:
+At build time the generator first injects the `[ActiveObject]` and `[StateTrigger]` marker attributes
+into your compilation (via `RegisterPostInitializationOutput`), so you never reference an attributes
+assembly. It then discovers each marked class, reads the state/trigger enums and every
+`[StateTrigger]` method, and emits a `{ClassName}.g.cs` partial that completes the class. At runtime,
+a call flows through the mailbox to the single worker:
 
 ```mermaid
 sequenceDiagram
@@ -111,8 +114,9 @@ Because the mailbox is created with `SingleReader = true` and only one worker `T
 
 ## Getting started
 
-Install the package — a single reference brings in the marker attributes, the source generator, and
-the `Stateless` dependency:
+Install the package. It is **analyzer-only** — the marker attributes are injected straight into your
+compilation by the generator, so there is no attributes assembly to reference. The single reference
+also flows the one runtime dependency, `Stateless`:
 
 ```bash
 dotnet add package ActiveStateMachine
@@ -130,11 +134,10 @@ Your consuming project should target **.NET 5 or later** (the generated code use
 `System.Threading.Channels` and the non-generic `TaskCompletionSource`). The example targets
 `net8.0`.
 
-> **Building from source instead?** Reference the projects directly — the **generator** as an
-> analyzer, the **attributes** as a normal reference — and add `Stateless` yourself:
+> **Building from source instead?** Reference the generator as an analyzer and add `Stateless`
+> yourself. There is no attributes project to reference — the generator supplies the attributes:
 >
 > ```xml
-> <ProjectReference Include="path/to/src/ActiveStateMachine.Attributes/ActiveStateMachine.Attributes.csproj" />
 > <ProjectReference Include="path/to/src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj"
 >                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 > <PackageReference Include="Stateless" Version="5.15.0" />
@@ -308,7 +311,9 @@ Simulation Complete.
 
 ## What the generator emits
 
-For the class above, the generator produces `PhoneActiveObject.g.cs` completing the partial class.
+Alongside the marker attributes (emitted once per compilation as
+`ActiveStateMachine.Attributes.g.cs`), the generator produces one `{ClassName}.g.cs` per Active
+Object. For the class above it emits `PhoneActiveObject.g.cs`, completing the partial class.
 Abbreviated:
 
 ```csharp
@@ -469,8 +474,7 @@ The generator reports build errors for misuse so problems surface at compile tim
 ```
 ActiveStateMachine.sln
 ├─ src/
-│  ├─ ActiveStateMachine.Attributes/     netstandard2.0 — [ActiveObject], [StateTrigger]
-│  └─ ActiveStateMachine.Generators/     netstandard2.0 — the IIncrementalGenerator (analyzer)
+│  └─ ActiveStateMachine.Generators/     netstandard2.0 — the IIncrementalGenerator + attributes (the whole package)
 ├─ samples/
 │  └─ ActiveStateMachine.Example/        net8.0 — the Phone console demo
 └─ tests/
@@ -481,7 +485,8 @@ Inside the generator project:
 
 | File | Responsibility |
 | --- | --- |
-| `ActiveObjectGenerator.cs` | The `IIncrementalGenerator` pipeline: discover, validate, model. |
+| `ActiveObjectGenerator.cs` | The `IIncrementalGenerator` pipeline: inject attributes, discover, validate, model. |
+| `EmbeddedAttributes.cs` | The `[ActiveObject]`/`[StateTrigger]` source injected into each consuming compilation. |
 | `Emitter.cs` | Renders the generated `{ClassName}.g.cs` source. |
 | `Model.cs` | Immutable, equatable model records used for incremental caching. |
 | `Diagnostics.cs` / `DiagnosticInfo.cs` | Diagnostic descriptors and cache-safe reporting. |
@@ -515,8 +520,8 @@ sides of the generator:
 | --- | --- |
 | .NET SDK (to build) | 8.0+ |
 | Consuming project TFM | .NET 5.0+ (for `System.Threading.Channels` and non-generic `TaskCompletionSource`) |
-| Stateless | 5.15.0 |
-| Generator / Attributes TFM | `netstandard2.0` |
+| Stateless | 5.15.0 (flowed automatically as the package's only dependency) |
+| Generator TFM | `netstandard2.0` |
 | Roslyn | `Microsoft.CodeAnalysis.CSharp` 4.8.0 |
 
 ## Limitations & roadmap
@@ -531,13 +536,13 @@ Current, intentional V1 scope:
 
 Ideas on the roadmap:
 
-- [x] Package as a single NuGet package (attributes + generator + Stateless dependency). See [PUBLISHING.md](PUBLISHING.md).
+- [x] Package as a single NuGet package. See [PUBLISHING.md](PUBLISHING.md).
+- [x] Auto-emit the marker attributes into the consuming compilation for an analyzer-only package
+      (only `Stateless` remains as a dependency).
 - [ ] Publish signed / source-linked builds via CI.
 - [ ] Optional factory / parameterless-constructor patterns and a configurable initial state.
 - [ ] `Task<T>` results for triggers that produce a value.
 - [ ] Nested and generic host classes.
-- [ ] Auto-emit the marker attributes into the consuming compilation for a truly dependency-free
-      package.
 
 ## Contributing
 

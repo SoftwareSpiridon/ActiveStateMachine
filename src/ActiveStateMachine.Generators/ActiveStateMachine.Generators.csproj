@@ -11,17 +11,50 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 
     <!--
-      This project is not packed on its own. Its output is bundled into the
-      ActiveStateMachine package (see ActiveStateMachine.Attributes.csproj).
+      RS2008: analyzer release tracking (unnecessary for this in-repo generator).
+      RS1038: the analyzer references a non-compiler assembly (Stateless). It is declared only to
+              flow as a package dependency for the GENERATED code; the generator never uses any
+              Stateless type, so it is never loaded into the analyzer context.
+      NU5128: no lib/ref assets for the Stateless dependency group — expected for an
+              analyzer-only package that still needs to flow a runtime dependency.
     -->
-    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);RS2008;RS1038;NU5128</NoWarn>
 
-    <!-- Analyzer release tracking is unnecessary for this in-repo generator. -->
-    <NoWarn>$(NoWarn);RS2008</NoWarn>
+    <!-- ===================== NuGet package (analyzer-only) ===================== -->
+    <!--
+      The package ships ONLY the generator, as a Roslyn analyzer. The marker attributes are
+      emitted into each consuming compilation at build time (RegisterPostInitializationOutput),
+      so there is no attributes assembly to reference. The only declared dependency is Stateless,
+      which the generated code uses.
+    -->
+    <IsPackable>true</IsPackable>
+    <PackageId>ActiveStateMachine</PackageId>
+    <Title>ActiveStateMachine — Active Object source generator for Stateless</Title>
+    <Description>A Roslyn incremental source generator that turns a partial class into a fully thread-safe, lock-free Active Object around a Stateless state machine. Decorate a class with [ActiveObject] and declare partial Task methods with [StateTrigger]; the generator emits the Channel-based mailbox, the single worker loop, the message records, the constructor and async disposal. The marker attributes are injected into your compilation automatically, so the package is analyzer-only and depends solely on Stateless.</Description>
+    <PackageReleaseNotes>Marker attributes are now auto-emitted into the consuming compilation (RegisterPostInitializationOutput); the package is analyzer-only with no separate attributes assembly. Includes 0-3 parameter triggers, async disposal, and ASM001-ASM005 diagnostics.</PackageReleaseNotes>
+    <DevelopmentDependency>false</DevelopmentDependency>
+    <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Compiler API — private, never flows to consumers. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The generated code references Stateless, so it must be present in the consuming project.
+      Declared as a normal package dependency so it flows to consumers. The generator itself never
+      uses any Stateless type (see RS1038 note above).
+    -->
+    <PackageReference Include="Stateless" Version="5.15.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pack the generator as a Roslyn analyzer. -->
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <!-- Ship the README as the package landing page on nuget.org. -->
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
 </Project>

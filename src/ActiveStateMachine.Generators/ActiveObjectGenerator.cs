@@ -17,6 +17,12 @@ namespace ActiveStateMachine.Generators
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
+            // Inject the marker attributes into the consuming compilation so no separate attributes
+            // assembly is needed. This runs before the pipeline below, so ForAttributeWithMetadataName
+            // discovers usages against these emitted types.
+            context.RegisterPostInitializationOutput(static ctx =>
+                ctx.AddSource(EmbeddedAttributes.HintName, EmbeddedAttributes.Source));
+
             IncrementalValuesProvider<GenerationResult> results = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
                     ActiveObjectAttributeName,
