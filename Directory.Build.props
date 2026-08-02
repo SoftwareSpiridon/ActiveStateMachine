@@ -1,0 +1,42 @@
+<Project>
+
+  <!--
+    Shared metadata for every project in the repository.
+    Only projects that set <IsPackable>true</IsPackable> (currently the ActiveStateMachine
+    package project) actually produce a .nupkg; everything else inherits IsPackable=false.
+
+    NOTE: Update the placeholder Author / URL values below to your real identity before
+    publishing to nuget.org.
+  -->
+  <PropertyGroup>
+    <!-- Versioning -->
+    <VersionPrefix>1.0.0</VersionPrefix>
+
+    <!-- Authoring / ownership -->
+    <Authors>Spiridon Sagirov</Authors>
+    <Company></Company>
+    <Product>ActiveStateMachine</Product>
+    <Copyright>Copyright (c) 2026 Spiridon Sagirov</Copyright>
+
+    <!-- License &amp; links (URLs are PLACEHOLDERS — set to your real repo before publishing) -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/SoftwareSpiridon/ActiveStateMachine.git</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SoftwareSpiridon/ActiveStateMachine.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>roslyn;source-generator;incremental-generator;state-machine;stateless;active-object;actor;async;channels;threading;thread-safe</PackageTags>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+    <!-- Nothing is packable unless a project explicitly opts in. -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Deterministic output. -->
+    <Deterministic>true</Deterministic>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <!-- Turn on ContinuousIntegrationBuild in CI (e.g. -p:ContinuousIntegrationBuild=true). -->
+    <ContinuousIntegrationBuild Condition="'$(ContinuousIntegrationBuild)' == ''">false</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

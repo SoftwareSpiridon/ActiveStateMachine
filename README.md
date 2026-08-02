@@ -111,34 +111,36 @@ Because the mailbox is created with `SingleReader = true` and only one worker `T
 
 ## Getting started
 
-> The project is currently consumed via project references (a published NuGet package is on the
-> [roadmap](#limitations--roadmap)). The generator project is already configured to pack as an
-> analyzer.
+Install the package — a single reference brings in the marker attributes, the source generator, and
+the `Stateless` dependency:
 
-Clone the repository and reference the two library projects from your app. The **generator** must be
-referenced as an analyzer (`OutputItemType="Analyzer"`), while the **attributes** are a normal
-reference:
+```bash
+dotnet add package ActiveStateMachine
+```
+
+or in your `.csproj`:
 
 ```xml
 <ItemGroup>
-  <!-- Marker attributes you apply in your own code -->
-  <ProjectReference Include="path/to/src/ActiveStateMachine.Attributes/ActiveStateMachine.Attributes.csproj" />
-
-  <!-- The source generator, wired in as an analyzer -->
-  <ProjectReference Include="path/to/src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj"
-                    OutputItemType="Analyzer"
-                    ReferenceOutputAssembly="false" />
-</ItemGroup>
-
-<ItemGroup>
-  <!-- The one real runtime dependency -->
-  <PackageReference Include="Stateless" Version="5.15.0" />
+  <PackageReference Include="ActiveStateMachine" Version="1.0.0" />
 </ItemGroup>
 ```
 
 Your consuming project should target **.NET 5 or later** (the generated code uses
 `System.Threading.Channels` and the non-generic `TaskCompletionSource`). The example targets
 `net8.0`.
+
+> **Building from source instead?** Reference the projects directly — the **generator** as an
+> analyzer, the **attributes** as a normal reference — and add `Stateless` yourself:
+>
+> ```xml
+> <ProjectReference Include="path/to/src/ActiveStateMachine.Attributes/ActiveStateMachine.Attributes.csproj" />
+> <ProjectReference Include="path/to/src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj"
+>                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+> <PackageReference Include="Stateless" Version="5.15.0" />
+> ```
+
+Maintainers: see [PUBLISHING.md](PUBLISHING.md) for how the package is built and pushed to nuget.org.
 
 ## Usage
 
@@ -529,7 +531,8 @@ Current, intentional V1 scope:
 
 Ideas on the roadmap:
 
-- [ ] Publish signed NuGet packages (generator + attributes).
+- [x] Package as a single NuGet package (attributes + generator + Stateless dependency). See [PUBLISHING.md](PUBLISHING.md).
+- [ ] Publish signed / source-linked builds via CI.
 - [ ] Optional factory / parameterless-constructor patterns and a configurable initial state.
 - [ ] `Task<T>` results for triggers that produce a value.
 - [ ] Nested and generic host classes.
