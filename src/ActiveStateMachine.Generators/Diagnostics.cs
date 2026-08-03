@@ -6,20 +6,20 @@ namespace ActiveStateMachine.Generators
     {
         private const string Category = "ActiveStateMachine";
 
-        /// <summary>Class decorated with [ActiveObject] must be partial.</summary>
+        /// <summary>Class decorated with an Active Object attribute must be partial.</summary>
         public static readonly DiagnosticDescriptor NotPartial = new(
             id: "ASM001",
             title: "Active Object class must be partial",
-            messageFormat: "Class '{0}' is marked with [ActiveObject] but is not declared 'partial'",
+            messageFormat: "Class '{0}' is marked as an Active Object but is not declared 'partial'",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
-        /// <summary>[StateTrigger] method must return Task.</summary>
+        /// <summary>[StateTrigger] method on an [ActiveObjectAsync] class must return Task.</summary>
         public static readonly DiagnosticDescriptor MustReturnTask = new(
             id: "ASM002",
-            title: "State trigger method must return Task",
-            messageFormat: "Method '{0}' is marked with [StateTrigger] but does not return 'System.Threading.Tasks.Task'",
+            title: "Async state trigger method must return Task",
+            messageFormat: "Method '{0}' is a trigger on an [ActiveObjectAsync] class but does not return 'System.Threading.Tasks.Task'",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
@@ -47,6 +47,15 @@ namespace ActiveStateMachine.Generators
             id: "ASM005",
             title: "State trigger value is missing",
             messageFormat: "Method '{0}' is marked with [StateTrigger] but no trigger value was supplied",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>[StateTrigger] method on an [ActiveObjectSync] class must return void.</summary>
+        public static readonly DiagnosticDescriptor MustReturnVoid = new(
+            id: "ASM006",
+            title: "Sync state trigger method must return void",
+            messageFormat: "Method '{0}' is a trigger on an [ActiveObjectSync] class but does not return 'void'",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

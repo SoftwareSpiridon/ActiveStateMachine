@@ -17,10 +17,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Behavioral tests run against the generated PhoneActiveObject. -->
-    <ProjectReference Include="..\..\samples\ActiveStateMachine.Example\ActiveStateMachine.Example.csproj" />
-    <!-- Diagnostic tests drive the generator directly. -->
-    <ProjectReference Include="..\..\src\ActiveStateMachine.Generators\ActiveStateMachine.Generators.csproj" />
+    <!-- Behavioral tests run against the generated PhoneActiveObject in both examples. -->
+    <ProjectReference Include="..\..\samples\ActiveStateMachine.Example.Async\ActiveStateMachine.Example.Async.csproj" />
+    <ProjectReference Include="..\..\samples\ActiveStateMachine.Example.Sync\ActiveStateMachine.Example.Sync.csproj" />
+    <!--
+      The generator is referenced two ways: as a normal assembly so the diagnostic tests can
+      instantiate ActiveObjectGenerator, and as an analyzer so it runs on this project's own source
+      (the 'Boom' fixture in SyncPhoneActiveObjectTests relies on the generated members).
+    -->
+    <ProjectReference Include="..\..\src\ActiveStateMachine.Generators\ActiveStateMachine.Generators.csproj"
+                      OutputItemType="Analyzer" />
   </ItemGroup>
 
 </Project>

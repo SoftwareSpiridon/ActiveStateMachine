@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -10,24 +9,39 @@ namespace ActiveStateMachine.Generators
     [Generator(LanguageNames.CSharp)]
     public sealed class ActiveObjectGenerator : IIncrementalGenerator
     {
-        private const string ActiveObjectAttributeName = "ActiveStateMachine.Attributes.ActiveObjectAttribute";
+        private const string ActiveObjectAsyncAttributeName = "ActiveStateMachine.Attributes.ActiveObjectAsyncAttribute";
+        private const string ActiveObjectSyncAttributeName = "ActiveStateMachine.Attributes.ActiveObjectSyncAttribute";
         private const string StateTriggerAttributeName = "ActiveStateMachine.Attributes.StateTriggerAttribute";
         private const string TaskTypeName = "System.Threading.Tasks.Task";
         private const int MaxParameters = 3;
 
+        /// <summary>Which implementation flavour a class was tagged with.</summary>
+        internal enum ActiveObjectKind
+        {
+            Async,
+            Sync,
+        }
+
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             // Inject the marker attributes into the consuming compilation so no separate attributes
-            // assembly is needed. This runs before the pipeline below, so ForAttributeWithMetadataName
+            // assembly is needed. This runs before the pipelines below, so ForAttributeWithMetadataName
             // discovers usages against these emitted types.
             context.RegisterPostInitializationOutput(static ctx =>
                 ctx.AddSource(EmbeddedAttributes.HintName, EmbeddedAttributes.Source));
 
+            RegisterPipeline(context, ActiveObjectAsyncAttributeName, ActiveObjectKind.Async);
+            RegisterPipeline(context, ActiveObjectSyncAttributeName, ActiveObjectKind.Sync);
+        }
+
+        private static void RegisterPipeline(
+            IncrementalGeneratorInitializationContext context, string attributeName, ActiveObjectKind kind)
+        {
             IncrementalValuesProvider<GenerationResult> results = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    ActiveObjectAttributeName,
+                    attributeName,
                     predicate: static (node, _) => node is ClassDeclarationSyntax,
-                    transform: static (ctx, _) => Transform(ctx))
+                    transform: (ctx, _) => Transform(ctx, kind))
                 .Where(static r => r is not null)
                 .Select(static (r, _) => r!);
 
@@ -40,13 +54,15 @@ namespace ActiveStateMachine.Generators
 
                 if (result.Info is { } info)
                 {
-                    string source = Emitter.Emit(info);
+                    string source = result.Kind == ActiveObjectKind.Async
+                        ? AsyncEmitter.Emit(info)
+                        : SyncEmitter.Emit(info);
                     spc.AddSource($"{info.ClassName}.g.cs", source);
                 }
             });
         }
 
-        private static GenerationResult? Transform(GeneratorAttributeSyntaxContext context)
+        private static GenerationResult? Transform(GeneratorAttributeSyntaxContext context, ActiveObjectKind kind)
         {
             if (context.TargetSymbol is not INamedTypeSymbol classSymbol ||
                 context.TargetNode is not ClassDeclarationSyntax classSyntax)
@@ -63,13 +79,13 @@ namespace ActiveStateMachine.Generators
                 diagnostics.Add(DiagnosticInfo.Create(Diagnostics.NotPartial, classSyntax, classSymbol.Name));
             }
 
-            // Read the [ActiveObject(stateType, triggerType)] arguments.
+            // Read the [ActiveObject*(stateType, triggerType)] arguments.
             AttributeData attribute = context.Attributes[0];
             if (attribute.ConstructorArguments.Length < 2 ||
                 attribute.ConstructorArguments[0].Value is not ITypeSymbol stateType ||
                 attribute.ConstructorArguments[1].Value is not ITypeSymbol triggerType)
             {
-                return new GenerationResult(null, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+                return new GenerationResult(null, kind, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
             }
 
             string stateTypeName = stateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -87,10 +103,18 @@ namespace ActiveStateMachine.Generators
 
                 SyntaxNode? methodSyntax = method.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
 
-                // Rule: the method must return Task.
-                if (method.ReturnType.ToDisplayString() != TaskTypeName)
+                // Rule: the return type must match the flavour (Task for async, void for sync).
+                if (kind == ActiveObjectKind.Async)
                 {
-                    diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustReturnTask, methodSyntax, method.Name));
+                    if (method.ReturnType.ToDisplayString() != TaskTypeName)
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustReturnTask, methodSyntax, method.Name));
+                        continue;
+                    }
+                }
+                else if (method.ReturnType.SpecialType != SpecialType.System_Void)
+                {
+                    diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustReturnVoid, methodSyntax, method.Name));
                     continue;
                 }
 
@@ -148,7 +172,7 @@ namespace ActiveStateMachine.Generators
                 triggerTypeName,
                 new EquatableArray<TriggerMethodInfo>(methods.ToArray()));
 
-            return new GenerationResult(info, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+            return new GenerationResult(info, kind, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
         }
 
         private static string AccessibilityText(Accessibility accessibility) => accessibility switch
@@ -162,6 +186,7 @@ namespace ActiveStateMachine.Generators
             _ => "internal",
         };
 
-        internal sealed record GenerationResult(ActiveObjectInfo? Info, EquatableArray<DiagnosticInfo> Diagnostics);
+        internal sealed record GenerationResult(
+            ActiveObjectInfo? Info, ActiveObjectKind Kind, EquatableArray<DiagnosticInfo> Diagnostics);
     }
 }

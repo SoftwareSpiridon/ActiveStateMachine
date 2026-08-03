@@ -1,9 +1,9 @@
-using ActiveStateMachine.Example;
+using ActiveStateMachine.Example.Async;
 using Xunit;
 
 namespace ActiveStateMachine.Tests;
 
-public class PhoneActiveObjectTests
+public class AsyncPhoneActiveObjectTests
 {
     [Fact]
     public async Task Parameterized_trigger_transitions_state()

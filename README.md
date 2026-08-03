@@ -5,9 +5,18 @@ lock-free [Active Object](https://en.wikipedia.org/wiki/Active_object) around a
 [Stateless](https://github.com/dotnet-state-machine/stateless) state machine.**
 
 You describe *what* your states, triggers and public methods are. The generator writes *all* of the
-concurrency plumbing for you at compile time — the mailbox, the worker loop, the message records, the
-constructor and async disposal — with **zero reflection and zero runtime dependencies** beyond
-Stateless itself.
+concurrency plumbing for you at compile time — the mailbox, the worker, the message types, the
+constructor and disposal — with **zero reflection and zero runtime dependencies** beyond Stateless
+itself.
+
+Two flavours are available, selected by the attribute you apply:
+
+- **`[ActiveObjectAsync]`** — the modern implementation: a `System.Threading.Channels.Channel` mailbox
+  drained by a worker `Task`, trigger methods that return `Task`, and `IAsyncDisposable`.
+- **`[ActiveObjectSync]`** — the classic implementation: a `BlockingCollection<T>` drained by a
+  dedicated background `Thread`, trigger methods that return `void` and **block** the caller until the
+  message has been processed, and `IDisposable`. No `async`/`await`, no `Task`-returning API, no
+  Channels.
 
 ![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)
 ![netstandard](https://img.shields.io/badge/generator-netstandard2.0-blue)
@@ -55,7 +64,7 @@ Active Object looks the same.
 **ActiveStateMachine generates all of it.** Your source stays declarative:
 
 ```csharp
-[ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+[ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
 public partial class PhoneActiveObject : IAsyncDisposable
 {
     [StateTrigger("PhoneTrigger.CallDialed")]
@@ -65,18 +74,23 @@ public partial class PhoneActiveObject : IAsyncDisposable
 }
 ```
 
-…and the compiler fills in the rest.
+…and the compiler fills in the rest. Swap `[ActiveObjectAsync]` for `[ActiveObjectSync]` (and
+`Task`→`void`, `IAsyncDisposable`→`IDisposable`) to get the blocking thread-based variant instead.
 
 ## Features
 
 - ⚙️ **Incremental source generator** (`IIncrementalGenerator`) — fast, cached, IDE-friendly.
-- 🧵 **Lock-free thread safety** — a single `Channel`-backed worker serializes every transition.
-- ⏱️ **`async`/`await` first** — every trigger method returns a `Task` that completes when the
-  transition has actually been applied, and faults if it throws.
+- 🧵 **Lock-free thread safety** — a single worker serializes every transition, so the state machine
+  is only ever touched from one thread. No locks.
+- 🔀 **Two flavours, same API shape** — pick modern async (`Channel` + `Task`) or classic blocking
+  (`Thread` + `BlockingCollection`) per class, just by changing the attribute.
+- ⏱️ **Completion-aware calls** — async triggers return a `Task` that completes when the transition
+  has actually been applied; sync triggers block until then. Either way, exceptions surface to the
+  caller, not the worker.
 - 🎯 **Parameterized triggers** — 0–3 parameters map automatically to Stateless
   `TriggerWithParameters<…>`, with the trigger objects cached for you.
-- 🧹 **Correct `IAsyncDisposable`** — completes the mailbox, drains in-flight messages, and stops the
-  worker cleanly.
+- 🧹 **Correct disposal** — `IAsyncDisposable` (async) or `IDisposable` (sync) that drains in-flight
+  messages and stops the worker cleanly.
 - 🚦 **Compile-time diagnostics** — misuse (non-`partial`, wrong return type, too many parameters…)
   becomes a build error, not a runtime surprise.
 - 📦 **Analyzer-only package** — the marker attributes are injected into your compilation by the
@@ -85,11 +99,12 @@ public partial class PhoneActiveObject : IAsyncDisposable
 
 ## How it works
 
-At build time the generator first injects the `[ActiveObject]` and `[StateTrigger]` marker attributes
-into your compilation (via `RegisterPostInitializationOutput`), so you never reference an attributes
-assembly. It then discovers each marked class, reads the state/trigger enums and every
-`[StateTrigger]` method, and emits a `{ClassName}.g.cs` partial that completes the class. At runtime,
-a call flows through the mailbox to the single worker:
+At build time the generator first injects the `[ActiveObjectAsync]`, `[ActiveObjectSync]` and
+`[StateTrigger]` marker attributes into your compilation (via `RegisterPostInitializationOutput`), so
+you never reference an attributes assembly. It then discovers each marked class, reads the
+state/trigger enums and every `[StateTrigger]` method, and emits a `{ClassName}.g.cs` partial that
+completes the class. At runtime, a call flows through the mailbox to the single worker (the async
+variant shown here):
 
 ```mermaid
 sequenceDiagram
@@ -112,6 +127,28 @@ sequenceDiagram
 Because the mailbox is created with `SingleReader = true` and only one worker `Task` ever reads it,
 **the state machine is only ever touched from one thread** — no locks required.
 
+The **sync** variant is the same idea without the async machinery — a dedicated `Thread` drains a
+`BlockingCollection`, and the caller blocks on a `TaskCompletionSource` (used purely as the
+wait/exception-marshalling primitive) until its message is processed:
+
+```mermaid
+sequenceDiagram
+    participant Caller as Caller (any thread)
+    participant Method as Dial() (generated, void)
+    participant Queue as BlockingCollection
+    participant Worker as Worker Thread
+    participant SM as Stateless machine
+
+    Caller->>Method: Dial("555-0199")
+    Method->>Queue: Add(DialMessage)
+    Method->>Method: Tcs.Task.GetAwaiter().GetResult() (blocks)
+    Worker->>Queue: GetConsumingEnumerable()
+    Queue-->>Worker: DialMessage
+    Worker->>SM: _machine.Fire(TriggerDial, "555-0199")
+    SM-->>Worker: transition applied
+    Worker-->>Caller: Tcs.SetResult() → Dial() returns
+```
+
 ## Getting started
 
 Install the package. It is **analyzer-only** — the marker attributes are injected straight into your
@@ -130,9 +167,9 @@ or in your `.csproj`:
 </ItemGroup>
 ```
 
-Your consuming project should target **.NET 5 or later** (the generated code uses
-`System.Threading.Channels` and the non-generic `TaskCompletionSource`). The example targets
-`net8.0`.
+Your consuming project should target **.NET 5 or later** (the async generated code uses
+`System.Threading.Channels` and the non-generic `TaskCompletionSource`; the sync code uses
+`BlockingCollection<T>` and `TaskCompletionSource<bool>`). The examples target `net8.0`.
 
 > **Building from source instead?** Reference the generator as an analyzer and add `Stateless`
 > yourself. There is no attributes project to reference — the generator supplies the attributes:
@@ -147,9 +184,10 @@ Maintainers: see [PUBLISHING.md](PUBLISHING.md) for how the package is built and
 
 ## Usage
 
-Writing an Active Object is three steps:
+Writing an Active Object is three steps. This walkthrough uses the **async** flavour; the
+[sync differences](#the-sync-flavour) follow.
 
-**1. Declare the enums and mark the class.** Apply `[ActiveObject(stateType, triggerType)]` to a
+**1. Declare the enums and mark the class.** Apply `[ActiveObjectAsync(stateType, triggerType)]` to a
 `partial class`.
 
 ```csharp
@@ -158,8 +196,8 @@ using ActiveStateMachine.Attributes;
 public enum DoorState   { Open, Closed, Locked }
 public enum DoorTrigger { OpenDoor, CloseDoor, Lock, Unlock }
 
-[ActiveObject(typeof(DoorState), typeof(DoorTrigger))]
-public partial class Door
+[ActiveObjectAsync(typeof(DoorState), typeof(DoorTrigger))]
+public partial class Door : IAsyncDisposable
 {
 }
 ```
@@ -209,20 +247,52 @@ await door.LockAsync("1234");
 > so you pass the starting state when you construct the object. Do not declare your own constructor
 > with the same signature.
 
+### The sync flavour
+
+For the classic blocking variant, change three things: use `[ActiveObjectSync]`, make the trigger
+methods `partial void`, and implement `IDisposable` instead of `IAsyncDisposable`. The parameterized
+trigger field drops the `Async` suffix to match the method name (`TriggerLock`):
+
+```csharp
+[ActiveObjectSync(typeof(DoorState), typeof(DoorTrigger))]
+public partial class Door : IDisposable
+{
+    [StateTrigger("DoorTrigger.OpenDoor")]
+    public partial void Open();
+
+    [StateTrigger("DoorTrigger.Lock")]
+    public partial void Lock(string pinCode);   // -> OnEntryFrom(TriggerLock, …)
+
+    partial void ConfigureStateMachine() { /* identical Stateless configuration */ }
+}
+
+// Calls are synchronous and block until the transition has been applied:
+using var door = new Door(DoorState.Open);
+door.Close();
+door.Lock("1234");
+```
+
 ## The Phone example
 
-The repository ships the canonical Stateless "telephone" example, re-expressed as an Active Object.
-The full user-written source is [`PhoneActiveObject.cs`](samples/ActiveStateMachine.Example/PhoneActiveObject.cs):
+The repository ships the canonical Stateless "telephone" example, re-expressed as an Active Object
+**twice** — once per flavour, producing identical console output:
+
+- [`samples/ActiveStateMachine.Example.Async`](samples/ActiveStateMachine.Example.Async) — the async
+  version shown below.
+- [`samples/ActiveStateMachine.Example.Sync`](samples/ActiveStateMachine.Example.Sync) — the blocking
+  thread-based version (`[ActiveObjectSync]`, `partial void` triggers, `IDisposable`, no `await`).
+
+The full async source is [`PhoneActiveObject.cs`](samples/ActiveStateMachine.Example.Async/PhoneActiveObject.cs):
 
 ```csharp
 using ActiveStateMachine.Attributes;
 
-namespace ActiveStateMachine.Example;
+namespace ActiveStateMachine.Example.Async;
 
 public enum PhoneState   { OffHook, Ringing, Connected, OnHold }
 public enum PhoneTrigger { CallDialed, HungUp, CallConnected, PlacedOnHold, TakenOffHold, LeftMessage }
 
-[ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+[ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
 public partial class PhoneActiveObject : IAsyncDisposable
 {
     /// <summary>Current state. Only safe to read between awaited calls.</summary>
@@ -276,7 +346,7 @@ public partial class PhoneActiveObject : IAsyncDisposable
 }
 ```
 
-Driving it ([`Program.cs`](samples/ActiveStateMachine.Example/Program.cs)):
+Driving it ([`Program.cs`](samples/ActiveStateMachine.Example.Async/Program.cs)):
 
 ```csharp
 await using var phone = new PhoneActiveObject(PhoneState.OffHook);
@@ -289,7 +359,9 @@ await phone.DialAsync("123-4567");   // invalid while Connected — ignored, wor
 await phone.HangUpAsync();
 ```
 
-Produces:
+The [sync driver](samples/ActiveStateMachine.Example.Sync/Program.cs) is the same script with the
+`await`s removed and `Thread.Sleep` in place of `Task.Delay` — e.g. `phone.Dial("555-0199");`. Both
+produce:
 
 ```text
 Starting Modern .NET Active Object Telephone Simulation...
@@ -313,8 +385,10 @@ Simulation Complete.
 
 Alongside the marker attributes (emitted once per compilation as
 `ActiveStateMachine.Attributes.g.cs`), the generator produces one `{ClassName}.g.cs` per Active
-Object. For the class above it emits `PhoneActiveObject.g.cs`, completing the partial class.
-Abbreviated:
+Object. For the async class above it emits `PhoneActiveObject.g.cs`, completing the partial class.
+Abbreviated (the **sync** flavour is the same shape with a `BlockingCollection` + `Thread` instead of
+a `Channel` + `Task`, `void` trigger bodies that block on `Tcs.Task.GetAwaiter().GetResult()`, and a
+synchronous `Dispose()`):
 
 ```csharp
 // <auto-generated/>
@@ -397,27 +471,39 @@ partial class PhoneActiveObject
 
 ## API reference
 
-### `[ActiveObject(Type stateType, Type triggerType)]`
+### `[ActiveObjectAsync(Type stateType, Type triggerType)]` / `[ActiveObjectSync(Type stateType, Type triggerType)]`
 
-Applied to a `partial class`. Declares the state and trigger enum types for the machine.
+Applied to a `partial class`. Declares the state and trigger enum types for the machine, and selects
+the implementation flavour. A class uses exactly one of the two.
 
-| Property | Description |
+| | `[ActiveObjectAsync]` | `[ActiveObjectSync]` |
+| --- | --- | --- |
+| Mailbox | `System.Threading.Channels.Channel` | `System.Collections.Concurrent.BlockingCollection<T>` |
+| Worker | a `Task` (`Task.Run`) | a dedicated background `Thread` |
+| Trigger method return | `Task` | `void` (blocks until processed) |
+| Disposal | `IAsyncDisposable` (`DisposeAsync`) | `IDisposable` (`Dispose`) |
+| Uses `async`/`await` | yes | no |
+
+Both expose the same constructor and properties:
+
+| Member | Description |
 | --- | --- |
 | `StateType` | The `enum` used for states. |
 | `TriggerType` | The `enum` used for triggers. |
 
 ### `[StateTrigger(string trigger)]`
 
-Applied to a `partial Task` method. `trigger` is the enum value **written as source text**, e.g.
-`"PhoneTrigger.CallDialed"`. The generator normalizes it to a fully-qualified reference, so the plain
-member name (`"CallDialed"`) works too.
+Applied to a `partial` trigger method (`partial Task …` on an async class, `partial void …` on a sync
+class). `trigger` is the enum value **written as source text**, e.g. `"PhoneTrigger.CallDialed"`. The
+generator normalizes it to a fully-qualified reference, so the plain member name (`"CallDialed"`)
+works too.
 
-| Method shape | Maps to |
+| Method shape (async / sync) | Maps to |
 | --- | --- |
-| `partial Task FooAsync()` | `_machine.Fire(trigger)` |
-| `partial Task FooAsync(T a)` | `_machine.Fire(TriggerFooAsync, a)` |
-| `partial Task FooAsync(T1 a, T2 b)` | `_machine.Fire(TriggerFooAsync, a, b)` |
-| `partial Task FooAsync(T1 a, T2 b, T3 c)` | `_machine.Fire(TriggerFooAsync, a, b, c)` |
+| `partial Task Foo()` / `partial void Foo()` | `_machine.Fire(trigger)` |
+| `… Foo(T a)` | `_machine.Fire(TriggerFoo, a)` |
+| `… Foo(T1 a, T2 b)` | `_machine.Fire(TriggerFoo, a, b)` |
+| `… Foo(T1 a, T2 b, T3 c)` | `_machine.Fire(TriggerFoo, a, b, c)` |
 
 ### Generated members available to your code
 
@@ -425,7 +511,7 @@ Inside `ConfigureStateMachine()` (and any other member of the class) you can use
 
 - `_machine` — the `StateMachine<TState, TTrigger>` to configure.
 - `Trigger{MethodName}` — the cached `TriggerWithParameters<…>` for each parameterized method (e.g.
-  `TriggerDialAsync`), ready to pass to `OnEntryFrom`.
+  `TriggerDialAsync` or `TriggerDial`), ready to pass to `OnEntryFrom`.
 
 ## Parameterized triggers
 
@@ -441,21 +527,28 @@ public partial Task SetProgramAsync(int minutes, int celsius);   // -> TriggerWi
 
 ## Concurrency & lifetime semantics
 
-- **Serialization.** Every trigger is applied by one worker reading a `SingleReader` channel, so the
-  state machine is never accessed concurrently — no locks, no races.
-- **Completion.** The `Task` returned by a trigger method completes **after** the transition has been
-  applied (including Stateless entry/exit actions). Awaiting it gives you happens-before ordering.
-- **Ordering.** Messages are processed in the order they were written. Firing a burst without
+Both flavours share the same guarantees; they differ only in *how* a caller observes completion
+(awaiting a `Task` vs. blocking) and in the disposal interface.
+
+- **Serialization.** Every trigger is applied by a single worker — one `Task` reading a `SingleReader`
+  channel (async), or one dedicated `Thread` draining a `BlockingCollection` (sync). The state machine
+  is never accessed concurrently — no locks, no races.
+- **Completion.** A trigger is "done" **after** the transition has been applied (including Stateless
+  entry/exit actions). The async method's `Task` completes at that point; the sync method *returns* at
+  that point. Either way you get happens-before ordering.
+- **Ordering.** Messages are processed in the order they were enqueued. Firing an async burst without
   awaiting each call still applies them sequentially.
 - **Exceptions.** If a transition throws (e.g. an invalid trigger with no `OnUnhandledTrigger`
-  handler), the exception is routed to *that call's* `Task` — the worker keeps running and later
+  handler), the exception is routed to *that call* — a faulted `Task` (async) or thrown from the
+  blocking call (sync, unwrapped via `GetAwaiter().GetResult()`). The worker keeps running; later
   calls are unaffected.
-- **Disposal.** `DisposeAsync()` completes the writer, awaits the worker so already-queued messages
-  drain, then cancels and disposes the token source. Calls made *after* disposal return a faulted
-  `Task` with `InvalidOperationException("Active Object message queue is closed.")`.
-- **Reading state.** The example exposes `public PhoneState State => _machine.State`. Reading state is
-  only guaranteed consistent **between** awaited calls; reading it while transitions are in flight is
-  a data race. Prefer awaiting a trigger, then reading.
+- **Disposal.** `DisposeAsync()` / `Dispose()` stops accepting new messages, drains everything already
+  queued, and stops the worker. Calls made *after* disposal fail with
+  `InvalidOperationException("Active Object message queue is closed.")` (a faulted `Task` for async, a
+  thrown exception for sync).
+- **Reading state.** The examples expose `public PhoneState State => _machine.State`. Reading state is
+  only guaranteed consistent **between** calls; reading it while a transition is in flight is a data
+  race. Prefer completing a trigger, then reading.
 
 ## Diagnostics
 
@@ -463,31 +556,34 @@ The generator reports build errors for misuse so problems surface at compile tim
 
 | ID | Severity | Condition |
 | --- | --- | --- |
-| `ASM001` | Error | `[ActiveObject]` applied to a class that is not `partial`. |
-| `ASM002` | Error | `[StateTrigger]` method does not return `System.Threading.Tasks.Task`. |
+| `ASM001` | Error | An Active Object attribute applied to a class that is not `partial`. |
+| `ASM002` | Error | `[StateTrigger]` on an `[ActiveObjectAsync]` class does not return `System.Threading.Tasks.Task`. |
 | `ASM003` | Error | `[StateTrigger]` method has more than 3 parameters. |
 | `ASM004` | Error | `[StateTrigger]` method is not `partial`. |
 | `ASM005` | Error | `[StateTrigger]` supplies no trigger value. |
+| `ASM006` | Error | `[StateTrigger]` on an `[ActiveObjectSync]` class does not return `void`. |
 
 ## Project layout
 
 ```
 ActiveStateMachine.sln
 ├─ src/
-│  └─ ActiveStateMachine.Generators/     netstandard2.0 — the IIncrementalGenerator + attributes (the whole package)
+│  └─ ActiveStateMachine.Generators/       netstandard2.0 — the IIncrementalGenerator + attributes (the whole package)
 ├─ samples/
-│  └─ ActiveStateMachine.Example/        net8.0 — the Phone console demo
+│  ├─ ActiveStateMachine.Example.Async/    net8.0 — the Phone demo, async flavour ([ActiveObjectAsync])
+│  └─ ActiveStateMachine.Example.Sync/     net8.0 — the Phone demo, sync flavour  ([ActiveObjectSync])
 └─ tests/
-   └─ ActiveStateMachine.Tests/          net8.0 — xUnit behavioral + generator-diagnostic tests
+   └─ ActiveStateMachine.Tests/            net8.0 — xUnit behavioral + generator-diagnostic tests
 ```
 
 Inside the generator project:
 
 | File | Responsibility |
 | --- | --- |
-| `ActiveObjectGenerator.cs` | The `IIncrementalGenerator` pipeline: inject attributes, discover, validate, model. |
-| `EmbeddedAttributes.cs` | The `[ActiveObject]`/`[StateTrigger]` source injected into each consuming compilation. |
-| `Emitter.cs` | Renders the generated `{ClassName}.g.cs` source. |
+| `ActiveObjectGenerator.cs` | The `IIncrementalGenerator`: post-init attributes, plus one pipeline per flavour (discover, validate, model). |
+| `EmbeddedAttributes.cs` | The `[ActiveObjectAsync]`/`[ActiveObjectSync]`/`[StateTrigger]` source injected into each consuming compilation. |
+| `AsyncEmitter.cs` | Renders the async `{ClassName}.g.cs` (Channel + Task + `IAsyncDisposable`). |
+| `SyncEmitter.cs` | Renders the sync `{ClassName}.g.cs` (BlockingCollection + Thread + `IDisposable`). |
 | `Model.cs` | Immutable, equatable model records used for incremental caching. |
 | `Diagnostics.cs` / `DiagnosticInfo.cs` | Diagnostic descriptors and cache-safe reporting. |
 | `EquatableArray.cs` | Structural-equality array wrapper for correct pipeline caching. |
@@ -498,8 +594,9 @@ Inside the generator project:
 # Build everything
 dotnet build ActiveStateMachine.sln
 
-# Run the Phone demo
-dotnet run --project samples/ActiveStateMachine.Example
+# Run the Phone demos
+dotnet run --project samples/ActiveStateMachine.Example.Async
+dotnet run --project samples/ActiveStateMachine.Example.Sync
 
 # Run the test suite
 dotnet test
@@ -508,11 +605,12 @@ dotnet test
 The test project ([`tests/ActiveStateMachine.Tests`](tests/ActiveStateMachine.Tests)) covers both
 sides of the generator:
 
-- **Behavioral tests** drive the generated `PhoneActiveObject` — happy-path transitions,
-  parameterized triggers, serial ordering under a burst, graceful handling of invalid triggers,
-  faulting after disposal, and a high-volume stress loop.
+- **Behavioral tests** drive both generated `PhoneActiveObject`s — happy-path transitions,
+  parameterized triggers, serial ordering under concurrent load, graceful handling of invalid
+  triggers, exceptions propagating to the caller, faulting/throwing after disposal, and a high-volume
+  stress loop.
 - **Diagnostic tests** run the generator in-memory with `CSharpGeneratorDriver` and assert that each
-  `ASMxxx` rule fires (and that valid input produces clean output).
+  `ASMxxx` rule fires (and that valid async *and* sync input produces clean output).
 
 ## Requirements
 
@@ -530,7 +628,8 @@ Current, intentional V1 scope:
 
 - The generated constructor is fixed to `({StateType} initialState)`; a consuming class cannot
   declare its own constructor with that signature.
-- Trigger methods must return `Task` (not `Task<T>` / `ValueTask`).
+- Trigger methods return `Task` (async flavour) or `void` (sync flavour) — no `Task<T>` / `ValueTask`
+  results yet.
 - The target class must be top-level (nested classes are not yet handled).
 - Up to 3 trigger parameters (Stateless's native limit).
 
@@ -555,7 +654,7 @@ Issues and pull requests are welcome. A good PR:
 
 ## License
 
-Released under the MIT License. _(Add a `LICENSE` file to the repository root before publishing.)_
+Released under the MIT License — see [LICENSE](LICENSE).
 
 ## Acknowledgements
 

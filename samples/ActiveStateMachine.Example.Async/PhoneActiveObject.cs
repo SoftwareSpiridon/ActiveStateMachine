@@ -1,6 +1,6 @@
 using ActiveStateMachine.Attributes;
 
-namespace ActiveStateMachine.Example;
+namespace ActiveStateMachine.Example.Async;
 
 // These map directly to the Stateless example.
 public enum PhoneState { OffHook, Ringing, Connected, OnHold }
@@ -15,7 +15,7 @@ public enum PhoneTrigger { CallDialed, HungUp, CallConnected, PlacedOnHold, Take
 /// constructor and disposal — is emitted by the ActiveStateMachine source generator; the only
 /// code below is the state configuration and the public trigger API.
 /// </summary>
-[ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+[ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
 public partial class PhoneActiveObject : IAsyncDisposable
 {
     /// <summary>Current state of the phone. Reads are only safe between awaited calls.</summary>

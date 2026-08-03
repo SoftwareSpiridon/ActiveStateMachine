@@ -3,7 +3,12 @@ using System.Text;
 
 namespace ActiveStateMachine.Generators
 {
-    internal static class Emitter
+    /// <summary>
+    /// Emits the modern asynchronous Active Object: a <c>System.Threading.Channels.Channel</c>
+    /// mailbox drained by a worker <c>Task</c>, trigger methods returning <c>Task</c>, and
+    /// <c>IAsyncDisposable</c>.
+    /// </summary>
+    internal static class AsyncEmitter
     {
         public static string Emit(ActiveObjectInfo info)
         {

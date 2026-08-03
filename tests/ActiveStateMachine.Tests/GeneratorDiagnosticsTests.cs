@@ -17,11 +17,11 @@ public class GeneratorDiagnosticsTests
         """;
 
     [Fact]
-    public void Valid_class_generates_source_without_diagnostics()
+    public void Valid_async_class_generates_source_without_diagnostics()
     {
         var (diagnostics, generated) = RunGenerator(Preamble + """
 
-            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
                 partial void ConfigureStateMachine() { }
@@ -37,20 +37,50 @@ public class GeneratorDiagnosticsTests
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
         Assert.Contains(generated, s => s.Contains("TriggerDialAsync"));
         Assert.Contains(generated, s => s.Contains("public partial global::System.Threading.Tasks.Task HangUpAsync()"));
+        Assert.Contains(generated, s => s.Contains("System.Threading.Channels.Channel"));
+    }
+
+    [Fact]
+    public void Valid_sync_class_generates_thread_based_source_without_diagnostics()
+    {
+        var (diagnostics, generated) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger("PhoneTrigger.CallDialed")]
+                public partial void Dial(string number);
+
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public partial void HangUp();
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+        string phone = Assert.Single(generated, s => s.Contains("class DialMessage"));
+        Assert.Contains("System.Collections.Concurrent.BlockingCollection", phone);
+        Assert.Contains("System.Threading.Thread", phone);
+        Assert.Contains("public partial void HangUp()", phone);
+        // No async / Task-returning API and no Channel in the synchronous implementation.
+        Assert.DoesNotContain("System.Threading.Channels", phone);
+        Assert.DoesNotContain("async ", phone);
     }
 
     [Fact]
     public void Marker_attributes_are_auto_emitted_into_the_compilation()
     {
-        // A bare compilation with no [ActiveObject] usage and no attributes reference at all.
+        // A bare compilation with no attribute usage and no attributes reference at all.
         var (diagnostics, generated) = RunGenerator("public class Empty { }");
 
         Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
 
         // The generator still injects the marker attributes via post-initialization output.
-        string attributes = Assert.Single(generated, s => s.Contains("class ActiveObjectAttribute"));
+        string attributes = Assert.Single(generated, s => s.Contains("class ActiveObjectAsyncAttribute"));
         Assert.Contains("namespace ActiveStateMachine.Attributes", attributes);
-        Assert.Contains("internal sealed class ActiveObjectAttribute", attributes);
+        Assert.Contains("internal sealed class ActiveObjectAsyncAttribute", attributes);
+        Assert.Contains("internal sealed class ActiveObjectSyncAttribute", attributes);
         Assert.Contains("internal sealed class StateTriggerAttribute", attributes);
     }
 
@@ -59,7 +89,7 @@ public class GeneratorDiagnosticsTests
     {
         var (diagnostics, _) = RunGenerator(Preamble + """
 
-            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public class Phone
             {
                 [StateTrigger("PhoneTrigger.HungUp")]
@@ -71,11 +101,11 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
-    public void Non_task_trigger_method_reports_ASM002()
+    public void Async_non_task_trigger_method_reports_ASM002()
     {
         var (diagnostics, _) = RunGenerator(Preamble + """
 
-            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
                 [StateTrigger("PhoneTrigger.HungUp")]
@@ -91,7 +121,7 @@ public class GeneratorDiagnosticsTests
     {
         var (diagnostics, _) = RunGenerator(Preamble + """
 
-            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
                 [StateTrigger("PhoneTrigger.CallDialed")]
@@ -107,7 +137,7 @@ public class GeneratorDiagnosticsTests
     {
         var (diagnostics, _) = RunGenerator(Preamble + """
 
-            [ActiveObject(typeof(PhoneState), typeof(PhoneTrigger))]
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
                 [StateTrigger("PhoneTrigger.HungUp")]
@@ -116,6 +146,22 @@ public class GeneratorDiagnosticsTests
             """);
 
         Assert.Contains(diagnostics, d => d.Id == "ASM004");
+    }
+
+    [Fact]
+    public void Sync_non_void_trigger_method_reports_ASM006()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                [StateTrigger("PhoneTrigger.HungUp")]
+                public partial Task HangUpAsync();
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM006");
     }
 
     private static (ImmutableArray<Diagnostic> Diagnostics, string[] Generated) RunGenerator(string source)

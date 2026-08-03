@@ -5,7 +5,7 @@ contains:
 
 | Path in package | Content | Role |
 | --- | --- | --- |
-| `analyzers/dotnet/cs/ActiveStateMachine.Generators.dll` | The incremental source generator (also injects the `[ActiveObject]`/`[StateTrigger]` attributes) | Loaded as a Roslyn analyzer |
+| `analyzers/dotnet/cs/ActiveStateMachine.Generators.dll` | The incremental source generator (also injects the `[ActiveObjectAsync]`/`[ActiveObjectSync]`/`[StateTrigger]` attributes) | Loaded as a Roslyn analyzer |
 | dependency `Stateless >= 5.15.0` | — | Flows to consumers (generated code uses it) |
 | `README.md` | — | Package landing page |
 

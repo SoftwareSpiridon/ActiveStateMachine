@@ -8,9 +8,13 @@ namespace ActiveStateMachine.Generators
     /// <remarks>
     /// The attributes are emitted as <c>internal</c> so each consuming assembly gets its own copy
     /// with no cross-assembly collisions. Their metadata names still match the strings the generator
-    /// looks for (<c>ActiveStateMachine.Attributes.ActiveObjectAttribute</c> /
-    /// <c>...StateTriggerAttribute</c>), so discovery via <c>ForAttributeWithMetadataName</c> works
-    /// against the post-initialization source exactly as it would against a referenced assembly.
+    /// looks for, so discovery via <c>ForAttributeWithMetadataName</c> works against the
+    /// post-initialization source exactly as it would against a referenced assembly.
+    /// <para>
+    /// <c>[ActiveObjectAsync]</c> selects the modern async/<c>Channel</c>/<c>Task</c> implementation;
+    /// <c>[ActiveObjectSync]</c> selects the classic blocking <c>Thread</c>/<c>BlockingCollection</c>
+    /// implementation. <c>[StateTrigger]</c> is shared by both.
+    /// </para>
     /// </remarks>
     internal static class EmbeddedAttributes
     {
@@ -25,9 +29,10 @@ namespace ActiveStateMachine.Generators
 namespace ActiveStateMachine.Attributes
 {
     /// <summary>
-    /// Marks a partial class as an Active Object backed by a Stateless state machine and a
-    /// Channel-based message queue. The source generator emits the state machine, mailbox, worker
-    /// loop and message plumbing for the class.
+    /// Marks a partial class as an <b>asynchronous</b> Active Object backed by a Stateless state
+    /// machine and a <c>System.Threading.Channels.Channel</c> mailbox. The source generator emits
+    /// the state machine, mailbox, worker <c>Task</c>, message plumbing and <c>IAsyncDisposable</c>
+    /// for the class. Trigger methods return <c>Task</c>.
     /// </summary>
     /// <remarks>
     /// The decorated class MUST be declared <c>partial</c> and SHOULD declare a
@@ -37,12 +42,12 @@ namespace ActiveStateMachine.Attributes
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
     [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
-    internal sealed class ActiveObjectAttribute : global::System.Attribute
+    internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
         /// <summary>Creates the attribute.</summary>
         /// <param name="stateType">The enum type used for states.</param>
         /// <param name="triggerType">The enum type used for triggers.</param>
-        public ActiveObjectAttribute(global::System.Type stateType, global::System.Type triggerType)
+        public ActiveObjectAsyncAttribute(global::System.Type stateType, global::System.Type triggerType)
         {
             StateType = stateType;
             TriggerType = triggerType;
@@ -56,14 +61,47 @@ namespace ActiveStateMachine.Attributes
     }
 
     /// <summary>
-    /// Marks a partial method as the public entry point for a state machine trigger.
-    /// The source generator implements the method body so that calling it enqueues a
-    /// message onto the Active Object's message queue and fires the associated trigger on the
-    /// worker thread.
+    /// Marks a partial class as a <b>synchronous</b> Active Object backed by a Stateless state
+    /// machine and a <c>System.Collections.Concurrent.BlockingCollection</c> processed by a
+    /// dedicated background <c>System.Threading.Thread</c>. The source generator emits the state
+    /// machine, the queue, the worker thread, message plumbing and <c>IDisposable</c> for the class.
+    /// Trigger methods return <c>void</c> and block the caller until the message has been processed.
     /// </summary>
     /// <remarks>
-    /// The decorated method MUST be <c>partial</c> and return <c>Task</c>. A method with
-    /// zero parameters maps to a plain trigger; a method with 1-3 parameters maps to a
+    /// The decorated class MUST be declared <c>partial</c> and SHOULD declare a
+    /// <c>partial void ConfigureStateMachine();</c> method that configures the underlying
+    /// <c>Stateless.StateMachine</c>.
+    /// </remarks>
+    [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.0.0")]
+    [global::System.Diagnostics.DebuggerNonUserCode]
+    internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
+    {
+        /// <summary>Creates the attribute.</summary>
+        /// <param name="stateType">The enum type used for states.</param>
+        /// <param name="triggerType">The enum type used for triggers.</param>
+        public ActiveObjectSyncAttribute(global::System.Type stateType, global::System.Type triggerType)
+        {
+            StateType = stateType;
+            TriggerType = triggerType;
+        }
+
+        /// <summary>The enum type used for states.</summary>
+        public global::System.Type StateType { get; }
+
+        /// <summary>The enum type used for triggers.</summary>
+        public global::System.Type TriggerType { get; }
+    }
+
+    /// <summary>
+    /// Marks a partial method as the public entry point for a state machine trigger. The source
+    /// generator implements the method body so that calling it enqueues a message onto the Active
+    /// Object's queue and fires the associated trigger on the worker.
+    /// </summary>
+    /// <remarks>
+    /// The decorated method MUST be <c>partial</c>. For an <c>[ActiveObjectAsync]</c> class it must
+    /// return <c>Task</c>; for an <c>[ActiveObjectSync]</c> class it must return <c>void</c>. A
+    /// method with zero parameters maps to a plain trigger; a method with 1-3 parameters maps to a
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]

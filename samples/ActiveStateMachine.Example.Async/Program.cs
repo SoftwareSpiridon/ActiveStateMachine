@@ -1,6 +1,6 @@
-using ActiveStateMachine.Example;
+using ActiveStateMachine.Example.Async;
 
-Console.WriteLine("Starting Modern .NET Active Object Telephone Simulation...\n");
+Console.WriteLine("Starting Modern (async) .NET Active Object Telephone Simulation...\n");
 
 // 'await using' ensures proper disposal and draining of the message queue.
 await using (var phone = new PhoneActiveObject(PhoneState.OffHook))
