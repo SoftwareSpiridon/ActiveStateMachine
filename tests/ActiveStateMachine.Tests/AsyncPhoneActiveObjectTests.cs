@@ -92,4 +92,60 @@ public class AsyncPhoneActiveObjectTests
 
         Assert.Equal(PhoneState.OffHook, phone.State);
     }
+
+    [Fact]
+    public async Task Name_from_attribute_flows_as_CurrentActiveObjectName()
+    {
+        await using var ao = new AsyncNamed(BoomState.A);
+
+        Assert.Equal("async-fixture", ao.Name);
+
+        // The captured value is AsyncNamed.CurrentActiveObjectName.Value observed on the worker.
+        await ao.GoAsync();
+        Assert.Equal("async-fixture", ao.CapturedName);
+    }
+
+    [Fact]
+    public async Task Name_from_constructor_overrides_the_attribute()
+    {
+        await using var ao = new AsyncNamed(BoomState.A, "custom-async");
+
+        Assert.Equal("custom-async", ao.Name);
+
+        await ao.GoAsync();
+        Assert.Equal("custom-async", ao.CapturedName);
+    }
+
+    [Fact]
+    public async Task Distinct_instances_keep_distinct_CurrentActiveObjectName_values()
+    {
+        await using var a = new AsyncNamed(BoomState.A, "first");
+        await using var b = new AsyncNamed(BoomState.A, "second");
+
+        await a.GoAsync();
+        await b.GoAsync();
+
+        // Each worker's AsyncLocal context carries its own instance name.
+        Assert.Equal("first", a.CapturedName);
+        Assert.Equal("second", b.CapturedName);
+    }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectAsync(typeof(BoomState), typeof(BoomTrigger), Name = "async-fixture")]
+public partial class AsyncNamed : IAsyncDisposable
+{
+    public string? CapturedName;
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    public partial Task GoAsync();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        // Runs on the worker, whose async context carries CurrentActiveObjectName.
+        _machine.Configure(BoomState.B)
+            .OnEntry(() => CapturedName = CurrentActiveObjectName.Value);
+    }
 }

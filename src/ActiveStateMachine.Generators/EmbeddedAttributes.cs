@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.2.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
@@ -58,6 +58,14 @@ namespace ActiveStateMachine.Attributes
 
         /// <summary>The enum type used for triggers.</summary>
         public global::System.Type TriggerType { get; }
+
+        /// <summary>
+        /// Optional name for this Active Object. Used as the value of the generated
+        /// <c>CurrentActiveObjectName</c> <c>AsyncLocal</c> while the worker runs. If left null it
+        /// defaults to the class name, and it can be overridden per-instance via the constructor's
+        /// <c>name</c> parameter.
+        /// </summary>
+        public string? Name { get; set; }
     }
 
     /// <summary>
@@ -73,7 +81,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.2.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
     {
@@ -91,6 +99,13 @@ namespace ActiveStateMachine.Attributes
 
         /// <summary>The enum type used for triggers.</summary>
         public global::System.Type TriggerType { get; }
+
+        /// <summary>
+        /// Optional name for this Active Object. Used as the name of the generated background worker
+        /// <c>Thread</c> (visible in the debugger). If left null it defaults to the class name, and it
+        /// can be overridden per-instance via the constructor's <c>name</c> parameter.
+        /// </summary>
+        public string? Name { get; set; }
     }
 
     /// <summary>
@@ -105,7 +120,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.2.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class StateTriggerAttribute : global::System.Attribute
     {

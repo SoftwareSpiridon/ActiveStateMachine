@@ -15,7 +15,7 @@ public enum PhoneTrigger { CallDialed, HungUp, CallConnected, PlacedOnHold, Take
 /// constructor and disposal — is emitted by the ActiveStateMachine source generator; the only
 /// code below is the state configuration and the public trigger API.
 /// </summary>
-[ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
+[ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger), Name = "Async-Phone")]
 public partial class PhoneActiveObject : IAsyncDisposable
 {
     /// <summary>Current state of the phone. Reads are only safe between awaited calls.</summary>
@@ -53,7 +53,8 @@ public partial class PhoneActiveObject : IAsyncDisposable
             .Permit(PhoneTrigger.CallConnected, PhoneState.Connected);
 
         _machine.Configure(PhoneState.Connected)
-            .OnEntry(() => Console.WriteLine("[Phone] Call Connected!"))
+            // CurrentActiveObjectName flows with the worker's async context.
+            .OnEntry(() => Console.WriteLine($"[Phone] Call Connected! (on active object '{CurrentActiveObjectName.Value}')"))
             .OnExit(() => Console.WriteLine("[Phone] Call Ended!"))
             .Permit(PhoneTrigger.LeftMessage, PhoneState.OffHook)
             .Permit(PhoneTrigger.HungUp, PhoneState.OffHook)

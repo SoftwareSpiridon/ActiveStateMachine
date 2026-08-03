@@ -15,7 +15,7 @@ each consuming compilation at build time, so nothing needs to be referenced beyo
 So a consumer needs a single reference:
 
 ```xml
-<PackageReference Include="ActiveStateMachine" Version="1.0.0" />
+<PackageReference Include="ActiveStateMachine" Version="1.2.0" />
 ```
 
 Packaging is driven from [`src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj`](src/ActiveStateMachine.Generators/ActiveStateMachine.Generators.csproj);
@@ -57,7 +57,7 @@ ships no symbol package.)
 Inspect the contents before pushing (a `.nupkg` is a zip):
 
 ```bash
-unzip -l artifacts/ActiveStateMachine.1.0.0.nupkg
+unzip -l artifacts/ActiveStateMachine.1.2.0.nupkg
 ```
 
 ## 4. Get a NuGet API key
@@ -78,7 +78,7 @@ unzip -l artifacts/ActiveStateMachine.1.0.0.nupkg
 
 ```bash
 # The key is read from the environment so it never appears in shell history.
-dotnet nuget push artifacts/ActiveStateMachine.1.0.0.nupkg \
+dotnet nuget push artifacts/ActiveStateMachine.1.2.0.nupkg \
   --api-key "$NUGET_API_KEY" \
   --source https://api.nuget.org/v3/index.json
 ```

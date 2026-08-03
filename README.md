@@ -163,7 +163,7 @@ or in your `.csproj`:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="ActiveStateMachine" Version="1.0.0" />
+  <PackageReference Include="ActiveStateMachine" Version="1.2.0" />
 </ItemGroup>
 ```
 
@@ -243,9 +243,36 @@ await door.CloseAsync();
 await door.LockAsync("1234");
 ```
 
-> **Note on the constructor:** the generator emits `public {ClassName}({StateType} initialState)`,
-> so you pass the starting state when you construct the object. Do not declare your own constructor
-> with the same signature.
+> **Note on the constructor:** the generator emits
+> `public {ClassName}({StateType} initialState, string? name = null)`, so you pass the starting state
+> (and optionally a name — see [Naming](#naming)) when you construct the object. Do not declare your
+> own constructor with the same signature.
+
+### Naming
+
+Every Active Object has a name. You can set a default on the attribute, and/or override it per
+instance in the constructor:
+
+```csharp
+[ActiveObjectAsync(typeof(DoorState), typeof(DoorTrigger), Name = "Door")]  // default for the type
+public partial class Door : IAsyncDisposable { /* … */ }
+
+var a = new Door(DoorState.Open);                 // name = "Door"       (from the attribute)
+var b = new Door(DoorState.Open, "front-door");   // name = "front-door" (constructor wins)
+var c = new Door(DoorState.Open);                 // with no attribute Name, defaults to "Door" (the class name)
+```
+
+Resolution order: **constructor argument** → **attribute `Name`** → **class name**. The current name
+is exposed as a `public string Name` property. It is also surfaced where it helps most while
+debugging:
+
+- **Sync** (`[ActiveObjectSync]`) — it becomes the **worker `Thread.Name`**, so each Active Object's
+  thread is identifiable in the debugger's Threads window and in call stacks.
+- **Async** (`[ActiveObjectAsync]`) — it is published to a `public static AsyncLocal<string?>`
+  **`CurrentActiveObjectName`** on the generated class, set on the worker task. Because `AsyncLocal`
+  flows with the execution context, any code run by the Active Object (Stateless entry/exit actions,
+  awaited continuations) can read `MyActiveObject.CurrentActiveObjectName.Value` to discover which
+  instance it is executing inside.
 
 ### The sync flavour
 
@@ -483,13 +510,18 @@ the implementation flavour. A class uses exactly one of the two.
 | Trigger method return | `Task` | `void` (blocks until processed) |
 | Disposal | `IAsyncDisposable` (`DisposeAsync`) | `IDisposable` (`Dispose`) |
 | Uses `async`/`await` | yes | no |
+| Name is surfaced as | `static AsyncLocal<string?> CurrentActiveObjectName` | the worker `Thread.Name` |
 
-Both expose the same constructor and properties:
+Both take the same constructor arguments and expose the same properties:
 
 | Member | Description |
 | --- | --- |
-| `StateType` | The `enum` used for states. |
-| `TriggerType` | The `enum` used for triggers. |
+| ctor `initialState` | The starting state passed to the `StateMachine`. |
+| ctor `name` (optional) | Per-instance name; overrides the attribute's `Name`. Defaults to the attribute `Name`, then the class name. See [Naming](#naming). |
+| `StateType` (attribute) | The `enum` used for states. |
+| `TriggerType` (attribute) | The `enum` used for triggers. |
+| `Name` (attribute, optional) | Default name for the type. |
+| `Name` (instance property) | The resolved name of this instance. |
 
 ### `[StateTrigger(string trigger)]`
 
@@ -512,6 +544,9 @@ Inside `ConfigureStateMachine()` (and any other member of the class) you can use
 - `_machine` — the `StateMachine<TState, TTrigger>` to configure.
 - `Trigger{MethodName}` — the cached `TriggerWithParameters<…>` for each parameterized method (e.g.
   `TriggerDialAsync` or `TriggerDial`), ready to pass to `OnEntryFrom`.
+- `Name` — the resolved instance name (`public string`).
+- `CurrentActiveObjectName` — *(async only)* the `public static AsyncLocal<string?>` carrying this
+  Active Object's name on its worker context. See [Naming](#naming).
 
 ## Parameterized triggers
 
@@ -626,8 +661,8 @@ sides of the generator:
 
 Current, intentional V1 scope:
 
-- The generated constructor is fixed to `({StateType} initialState)`; a consuming class cannot
-  declare its own constructor with that signature.
+- The generated constructor is fixed to `({StateType} initialState, string? name = null)`; a
+  consuming class cannot declare its own constructor with that signature.
 - Trigger methods return `Task` (async flavour) or `void` (sync flavour) — no `Task<T>` / `ValueTask`
   results yet.
 - The target class must be top-level (nested classes are not yet handled).

@@ -30,8 +30,8 @@
     <IsPackable>true</IsPackable>
     <PackageId>ActiveStateMachine</PackageId>
     <Title>ActiveStateMachine — Active Object source generator for Stateless</Title>
-    <Description>A Roslyn incremental source generator that turns a partial class into a fully thread-safe, lock-free Active Object around a Stateless state machine. Decorate a class with [ActiveObject] and declare partial Task methods with [StateTrigger]; the generator emits the Channel-based mailbox, the single worker loop, the message records, the constructor and async disposal. The marker attributes are injected into your compilation automatically, so the package is analyzer-only and depends solely on Stateless.</Description>
-    <PackageReleaseNotes>Marker attributes are now auto-emitted into the consuming compilation (RegisterPostInitializationOutput); the package is analyzer-only with no separate attributes assembly. Includes 0-3 parameter triggers, async disposal, and ASM001-ASM005 diagnostics.</PackageReleaseNotes>
+    <Description>A Roslyn incremental source generator that turns a partial class into a fully thread-safe, lock-free Active Object around a Stateless state machine. Decorate a class with [ActiveObjectAsync] (Channel + Task) or [ActiveObjectSync] (Thread + BlockingCollection) and declare partial trigger methods with [StateTrigger]; the generator emits the mailbox, worker, message types, constructor and disposal. The marker attributes are injected into your compilation automatically, so the package is analyzer-only and depends solely on Stateless.</Description>
+    <PackageReleaseNotes>1.2.0: Active Objects can be named via the attribute (Name = "…") or the constructor. The sync worker Thread is named accordingly; the async worker publishes the name via a static AsyncLocal CurrentActiveObjectName. Analyzer-only package; ASM001-ASM006 diagnostics.</PackageReleaseNotes>
     <DevelopmentDependency>false</DevelopmentDependency>
     <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>

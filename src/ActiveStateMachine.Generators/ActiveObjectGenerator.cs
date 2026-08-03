@@ -91,6 +91,16 @@ namespace ActiveStateMachine.Generators
             string stateTypeName = stateType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             string triggerTypeName = triggerType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
+            // Optional Name = "..." named argument on the attribute.
+            string? name = null;
+            foreach (KeyValuePair<string, TypedConstant> named in attribute.NamedArguments)
+            {
+                if (named.Key == "Name" && named.Value.Value is string s && !string.IsNullOrWhiteSpace(s))
+                {
+                    name = s;
+                }
+            }
+
             var methods = new List<TriggerMethodInfo>();
             foreach (IMethodSymbol method in classSymbol.GetMembers().OfType<IMethodSymbol>())
             {
@@ -170,6 +180,7 @@ namespace ActiveStateMachine.Generators
                 AccessibilityText(classSymbol.DeclaredAccessibility),
                 stateTypeName,
                 triggerTypeName,
+                name,
                 new EquatableArray<TriggerMethodInfo>(methods.ToArray()));
 
             return new GenerationResult(info, kind, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));

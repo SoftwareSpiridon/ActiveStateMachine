@@ -15,12 +15,13 @@ namespace ActiveStateMachine.Generators
         public bool IsParameterized => Parameters.Count > 0;
     }
 
-    /// <summary>A class marked with [ActiveObject], fully described for emission.</summary>
+    /// <summary>A class marked with an Active Object attribute, fully described for emission.</summary>
     internal sealed record ActiveObjectInfo(
         string? Namespace,
         string ClassName,
         string Accessibility,
         string StateType,
         string TriggerType,
+        string? Name,
         EquatableArray<TriggerMethodInfo> Methods);
 }

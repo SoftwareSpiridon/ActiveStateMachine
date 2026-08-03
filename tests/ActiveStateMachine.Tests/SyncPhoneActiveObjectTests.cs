@@ -104,6 +104,29 @@ public class SyncPhoneActiveObjectTests
 
         Assert.Throws<InvalidOperationException>(() => phone.Dial("555-4444"));
     }
+
+    [Fact]
+    public void Name_from_attribute_is_used_for_the_worker_thread()
+    {
+        using var ao = new SyncNamed(BoomState.A);
+
+        Assert.Equal("sync-fixture", ao.Name);
+
+        // The captured value is Thread.CurrentThread.Name observed inside the worker thread.
+        ao.Go();
+        Assert.Equal("sync-fixture", ao.CapturedThreadName);
+    }
+
+    [Fact]
+    public void Name_from_constructor_overrides_the_attribute()
+    {
+        using var ao = new SyncNamed(BoomState.A, "custom-thread");
+
+        Assert.Equal("custom-thread", ao.Name);
+
+        ao.Go();
+        Assert.Equal("custom-thread", ao.CapturedThreadName);
+    }
 }
 
 public enum BoomState { A, B }
@@ -123,5 +146,24 @@ public partial class Boom : IDisposable
 
         _machine.Configure(BoomState.B)
             .OnEntry(() => throw new InvalidOperationException("boom"));
+    }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger), Name = "sync-fixture")]
+public partial class SyncNamed : IDisposable
+{
+    public string? CapturedThreadName;
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    public partial void Go();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        // Runs on the worker thread, so it observes that thread's name.
+        _machine.Configure(BoomState.B)
+            .OnEntry(() => CapturedThreadName = Thread.CurrentThread.Name);
     }
 }
