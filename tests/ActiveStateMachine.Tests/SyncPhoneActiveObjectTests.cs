@@ -127,6 +127,16 @@ public class SyncPhoneActiveObjectTests
         ao.Go();
         Assert.Equal("custom-thread", ao.CapturedThreadName);
     }
+
+    [Fact]
+    public void OnDisposing_hook_runs_exactly_once_on_dispose()
+    {
+        var ao = new SyncDisposeHook(BoomState.A);
+        Assert.Equal(0, ao.OnDisposingCalls);
+
+        ao.Dispose();
+        Assert.Equal(1, ao.OnDisposingCalls);
+    }
 }
 
 public enum BoomState { A, B }
@@ -147,6 +157,23 @@ public partial class Boom : IDisposable
         _machine.Configure(BoomState.B)
             .OnEntry(() => throw new InvalidOperationException("boom"));
     }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class SyncDisposeHook : IDisposable
+{
+    public int OnDisposingCalls;
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    public partial void Go();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+    }
+
+    partial void OnDisposing() => OnDisposingCalls++;
 }
 
 [ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger), Name = "sync-fixture")]

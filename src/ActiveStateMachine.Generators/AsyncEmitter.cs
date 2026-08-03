@@ -105,6 +105,12 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}partial void ConfigureStateMachine();");
             sb.AppendLine();
 
+            // Partial hook invoked at the start of DisposeAsync(), before the mailbox is completed and
+            // the worker is awaited. Lets the class release resources it owns (unsubscribe events, stop
+            // auxiliary threads). An unimplemented partial is elided, so it is entirely optional.
+            sb.AppendLine($"{b}partial void OnDisposing();");
+            sb.AppendLine();
+
             // --- 6. Mailbox processor ---
             sb.AppendLine($"{b}private async global::System.Threading.Tasks.Task ProcessMailboxAsync()");
             sb.AppendLine($"{b}{{");
@@ -149,6 +155,7 @@ namespace ActiveStateMachine.Generators
             // --- 8. Async disposal ---
             sb.AppendLine($"{b}public async global::System.Threading.Tasks.ValueTask DisposeAsync()");
             sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    OnDisposing();");
             sb.AppendLine($"{b}    _messageQueue.Writer.TryComplete();");
             sb.AppendLine($"{b}    try");
             sb.AppendLine($"{b}    {{");

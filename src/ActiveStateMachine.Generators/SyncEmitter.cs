@@ -123,6 +123,12 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}partial void ConfigureStateMachine();");
             sb.AppendLine();
 
+            // Partial hook invoked at the start of Dispose(), before the queue is completed and the
+            // worker is joined. Lets the class release resources it owns (unsubscribe events, stop
+            // auxiliary threads). An unimplemented partial is elided, so it is entirely optional.
+            sb.AppendLine($"{b}partial void OnDisposing();");
+            sb.AppendLine();
+
             // --- 6. Worker loop (dedicated thread) ---
             sb.AppendLine($"{b}private void ProcessMessages()");
             sb.AppendLine($"{b}{{");
@@ -174,6 +180,7 @@ namespace ActiveStateMachine.Generators
             // --- 9. Disposal ---
             sb.AppendLine($"{b}public void Dispose()");
             sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    OnDisposing();");
             sb.AppendLine($"{b}    _messageQueue.CompleteAdding();");
             sb.AppendLine($"{b}    _workerThread.Join();");
             sb.AppendLine($"{b}    _messageQueue.Dispose();");

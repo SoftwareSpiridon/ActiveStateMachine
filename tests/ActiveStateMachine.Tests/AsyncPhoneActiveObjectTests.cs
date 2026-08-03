@@ -129,6 +129,33 @@ public class AsyncPhoneActiveObjectTests
         Assert.Equal("first", a.CapturedName);
         Assert.Equal("second", b.CapturedName);
     }
+
+    [Fact]
+    public async Task OnDisposing_hook_runs_exactly_once_on_dispose()
+    {
+        var ao = new AsyncDisposeHook(BoomState.A);
+        Assert.Equal(0, ao.OnDisposingCalls);
+
+        await ao.DisposeAsync();
+        Assert.Equal(1, ao.OnDisposingCalls);
+    }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectAsync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class AsyncDisposeHook : IAsyncDisposable
+{
+    public int OnDisposingCalls;
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    public partial Task GoAsync();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+    }
+
+    partial void OnDisposing() => OnDisposingCalls++;
 }
 
 [ActiveStateMachine.Attributes.ActiveObjectAsync(typeof(BoomState), typeof(BoomTrigger), Name = "async-fixture")]

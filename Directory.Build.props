@@ -10,7 +10,7 @@
   -->
   <PropertyGroup>
     <!-- Versioning -->
-    <VersionPrefix>1.2.0</VersionPrefix>
+    <VersionPrefix>1.3.0</VersionPrefix>
 
     <!-- Authoring / ownership -->
     <Authors>Spiridon Sagirov</Authors>
