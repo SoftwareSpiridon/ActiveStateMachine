@@ -137,6 +137,19 @@ public class SyncPhoneActiveObjectTests
         ao.Dispose();
         Assert.Equal(1, ao.OnDisposingCalls);
     }
+
+    [Fact]
+    public void Wait_false_trigger_does_not_block_or_throw_and_worker_survives()
+    {
+        using var ao = new SyncNoWaitBoom(BoomState.A);
+
+        // The entry action throws, but a Wait=false call is fire-and-forget: it must not surface the
+        // exception to the caller (contrast with the Wait=true Boom fixture, which does throw).
+        ao.Go();
+
+        // The worker still processed the message (and survived the thrown exception).
+        Assert.True(ao.Entered.Wait(TimeSpan.FromSeconds(5)));
+    }
 }
 
 public enum BoomState { A, B }
@@ -174,6 +187,26 @@ public partial class SyncDisposeHook : IDisposable
     }
 
     partial void OnDisposing() => OnDisposingCalls++;
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class SyncNoWaitBoom : IDisposable
+{
+    public readonly ManualResetEventSlim Entered = new();
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode", Wait = false)]
+    public partial void Go();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        // Signals that the worker processed the message, then throws — the fault must be swallowed
+        // for a Wait=false trigger (the caller never observes it) and the worker must survive.
+        _machine.Configure(BoomState.B)
+            .OnEntry(() => { Entered.Set(); throw new InvalidOperationException("boom"); });
+    }
 }
 
 [ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger), Name = "sync-fixture")]

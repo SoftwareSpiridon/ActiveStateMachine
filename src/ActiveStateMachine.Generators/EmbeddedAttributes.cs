@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.3.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
@@ -81,7 +81,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.3.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
     {
@@ -120,7 +120,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.3.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class StateTriggerAttribute : global::System.Attribute
     {
@@ -135,6 +135,17 @@ namespace ActiveStateMachine.Attributes
 
         /// <summary>The trigger enum value expressed as source text.</summary>
         public string Trigger { get; }
+
+        /// <summary>
+        /// Whether the caller waits for the worker to finish processing the trigger. When
+        /// <c>true</c> (the default) the trigger method blocks (sync) / returns a task that completes
+        /// when processing is done (async), and any exception thrown while processing surfaces to the
+        /// caller. When <c>false</c> the method only enqueues the message and returns immediately;
+        /// the caller neither blocks nor observes processing exceptions. Use <c>false</c> for triggers
+        /// fired from another Active Object's worker thread, where blocking would risk a cross-object
+        /// deadlock.
+        /// </summary>
+        public bool Wait { get; set; } = true;
     }
 }
 """;

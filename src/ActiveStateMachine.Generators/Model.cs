@@ -8,6 +8,7 @@ namespace ActiveStateMachine.Generators
         string Name,
         string Accessibility,
         string Trigger,
+        bool Wait,
         EquatableArray<ParameterInfo> Parameters)
     {
         public int ParameterCount => Parameters.Count;

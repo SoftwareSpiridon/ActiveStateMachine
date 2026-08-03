@@ -147,20 +147,25 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}}}");
             sb.AppendLine();
 
-            // --- 7. Trigger method implementations (blocking, void) ---
+            // --- 7. Trigger method implementations (void) ---
+            // Wait == true  -> block the caller until the worker has processed the message.
+            // Wait == false -> only enqueue and return immediately (fire-and-forget); the caller
+            //                  neither blocks nor observes processing exceptions. Use this for triggers
+            //                  fired from another Active Object's worker thread to avoid deadlocks.
             foreach (TriggerMethodInfo method in info.Methods)
             {
                 string sigParams = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
                 string ctorArgs = string.Join(", ", method.Parameters.Select(p => p.Name));
+                string sendMethod = method.Wait ? "SendAndWait" : "Send";
                 sb.AppendLine($"{b}{method.Accessibility} partial void {method.Name}({sigParams})");
                 sb.AppendLine($"{b}{{");
-                sb.AppendLine($"{b}    SendAndWait(new {method.Name}Message({ctorArgs}));");
+                sb.AppendLine($"{b}    {sendMethod}(new {method.Name}Message({ctorArgs}));");
                 sb.AppendLine($"{b}}}");
                 sb.AppendLine();
             }
 
-            // --- 8. Send helper: enqueue and block until processed ---
-            sb.AppendLine($"{b}private void SendAndWait({messageBase} message)");
+            // --- 8. Send helpers ---
+            sb.AppendLine($"{b}private void Enqueue({messageBase} message)");
             sb.AppendLine($"{b}{{");
             sb.AppendLine($"{b}    try");
             sb.AppendLine($"{b}    {{");
@@ -170,10 +175,25 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}    {{");
             sb.AppendLine($"{b}        throw new global::System.InvalidOperationException(\"Active Object message queue is closed.\");");
             sb.AppendLine($"{b}    }}");
+            sb.AppendLine($"{b}}}");
             sb.AppendLine();
-            sb.AppendLine($"{b}    // Block the calling thread until the worker has processed the message,");
-            sb.AppendLine($"{b}    // rethrowing any exception it produced (no wrapping AggregateException).");
+            sb.AppendLine($"{b}// Enqueue and block the calling thread until the worker has processed the message,");
+            sb.AppendLine($"{b}// rethrowing any exception it produced (no wrapping AggregateException).");
+            sb.AppendLine($"{b}private void SendAndWait({messageBase} message)");
+            sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    Enqueue(message);");
             sb.AppendLine($"{b}    message.Tcs.Task.GetAwaiter().GetResult();");
+            sb.AppendLine($"{b}}}");
+            sb.AppendLine();
+            sb.AppendLine($"{b}// Enqueue and return immediately. The processing result/exception is observed (but");
+            sb.AppendLine($"{b}// discarded) so a fault never surfaces as an UnobservedTaskException.");
+            sb.AppendLine($"{b}private void Send({messageBase} message)");
+            sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    Enqueue(message);");
+            sb.AppendLine($"{b}    message.Tcs.Task.ContinueWith(");
+            sb.AppendLine($"{b}        static t => {{ _ = t.Exception; }},");
+            sb.AppendLine($"{b}        global::System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted |");
+            sb.AppendLine($"{b}        global::System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously);");
             sb.AppendLine($"{b}}}");
             sb.AppendLine();
 

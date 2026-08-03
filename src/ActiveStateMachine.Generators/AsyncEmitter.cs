@@ -138,6 +138,11 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine();
 
             // --- 7. Partial method implementations ---
+            // Wait == true  -> return the task that completes when the worker has processed the message
+            //                  (surfacing any processing exception to the awaiter).
+            // Wait == false -> enqueue and return an already-completed task; the caller neither awaits
+            //                  processing nor observes its exceptions. Use this for triggers fired from
+            //                  another Active Object's worker to avoid cross-object deadlocks.
             foreach (TriggerMethodInfo method in info.Methods)
             {
                 string sigParams = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
@@ -145,9 +150,27 @@ namespace ActiveStateMachine.Generators
                 sb.AppendLine($"{b}{method.Accessibility} partial global::System.Threading.Tasks.Task {method.Name}({sigParams})");
                 sb.AppendLine($"{b}{{");
                 sb.AppendLine($"{b}    var __msg = new {method.Name}Message({ctorArgs});");
-                sb.AppendLine($"{b}    return _messageQueue.Writer.TryWrite(__msg)");
-                sb.AppendLine($"{b}        ? __msg.Completion");
-                sb.AppendLine($"{b}        : global::System.Threading.Tasks.Task.FromException(new global::System.InvalidOperationException(\"Active Object message queue is closed.\"));");
+                if (method.Wait)
+                {
+                    sb.AppendLine($"{b}    return _messageQueue.Writer.TryWrite(__msg)");
+                    sb.AppendLine($"{b}        ? __msg.Completion");
+                    sb.AppendLine($"{b}        : global::System.Threading.Tasks.Task.FromException(new global::System.InvalidOperationException(\"Active Object message queue is closed.\"));");
+                }
+                else
+                {
+                    sb.AppendLine($"{b}    if (!_messageQueue.Writer.TryWrite(__msg))");
+                    sb.AppendLine($"{b}    {{");
+                    sb.AppendLine($"{b}        return global::System.Threading.Tasks.Task.FromException(new global::System.InvalidOperationException(\"Active Object message queue is closed.\"));");
+                    sb.AppendLine($"{b}    }}");
+                    sb.AppendLine();
+                    sb.AppendLine($"{b}    // Observe (and discard) any processing fault so it never surfaces as an UnobservedTaskException.");
+                    sb.AppendLine($"{b}    __msg.Completion.ContinueWith(");
+                    sb.AppendLine($"{b}        static t => {{ _ = t.Exception; }},");
+                    sb.AppendLine($"{b}        global::System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted |");
+                    sb.AppendLine($"{b}        global::System.Threading.Tasks.TaskContinuationOptions.ExecuteSynchronously);");
+                    sb.AppendLine($"{b}    return global::System.Threading.Tasks.Task.CompletedTask;");
+                }
+
                 sb.AppendLine($"{b}}}");
                 sb.AppendLine();
             }

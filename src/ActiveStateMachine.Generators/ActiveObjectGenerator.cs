@@ -157,6 +157,18 @@ namespace ActiveStateMachine.Generators
                 string member = triggerText!.Substring(triggerText.LastIndexOf('.') + 1).Trim();
                 string qualifiedTrigger = $"{triggerTypeName}.{member}";
 
+                // Optional Wait = false named argument: when false the generated trigger method
+                // enqueues the message and returns immediately (async) / does not block (sync),
+                // instead of waiting for the worker to process it. Defaults to true.
+                bool wait = true;
+                foreach (KeyValuePair<string, TypedConstant> named in triggerAttribute.NamedArguments)
+                {
+                    if (named.Key == "Wait" && named.Value.Value is bool b)
+                    {
+                        wait = b;
+                    }
+                }
+
                 var parameters = method.Parameters
                     .Select(p => new ParameterInfo(
                         p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -167,6 +179,7 @@ namespace ActiveStateMachine.Generators
                     method.Name,
                     AccessibilityText(method.DeclaredAccessibility),
                     qualifiedTrigger,
+                    wait,
                     new EquatableArray<ParameterInfo>(parameters)));
             }
 

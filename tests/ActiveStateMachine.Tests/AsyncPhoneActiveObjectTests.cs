@@ -139,6 +139,37 @@ public class AsyncPhoneActiveObjectTests
         await ao.DisposeAsync();
         Assert.Equal(1, ao.OnDisposingCalls);
     }
+
+    [Fact]
+    public async Task Wait_false_trigger_completes_immediately_without_faulting_and_worker_survives()
+    {
+        await using var ao = new AsyncNoWaitBoom(BoomState.A);
+
+        // A Wait=false trigger returns an already-completed task even though the entry action throws;
+        // awaiting it must not fault.
+        await ao.GoAsync();
+
+        // The worker still processed the message and survived the thrown exception.
+        Assert.True(ao.Entered.Wait(TimeSpan.FromSeconds(5)));
+    }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectAsync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class AsyncNoWaitBoom : IAsyncDisposable
+{
+    public readonly ManualResetEventSlim Entered = new();
+
+    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode", Wait = false)]
+    public partial Task GoAsync();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        _machine.Configure(BoomState.B)
+            .OnEntry(() => { Entered.Set(); throw new InvalidOperationException("boom"); });
+    }
 }
 
 [ActiveStateMachine.Attributes.ActiveObjectAsync(typeof(BoomState), typeof(BoomTrigger))]

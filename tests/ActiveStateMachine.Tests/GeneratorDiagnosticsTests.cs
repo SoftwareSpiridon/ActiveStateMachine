@@ -69,6 +69,32 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
+    public void Wait_false_trigger_emits_non_blocking_send()
+    {
+        var (diagnostics, generated) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger("PhoneTrigger.CallDialed")]
+                public partial void Dial(string number);
+
+                [StateTrigger("PhoneTrigger.HungUp", Wait = false)]
+                public partial void HangUp();
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+        string phone = Assert.Single(generated, s => s.Contains("class DialMessage"));
+        // Default (Wait=true) blocks; Wait=false only enqueues.
+        Assert.Contains("SendAndWait(new DialMessage(number))", phone);
+        Assert.Contains("Send(new HangUpMessage())", phone);
+        Assert.DoesNotContain("SendAndWait(new HangUpMessage())", phone);
+    }
+
+    [Fact]
     public void Marker_attributes_are_auto_emitted_into_the_compilation()
     {
         // A bare compilation with no attribute usage and no attributes reference at all.
