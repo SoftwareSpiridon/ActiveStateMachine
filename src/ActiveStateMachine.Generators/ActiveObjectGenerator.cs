@@ -143,19 +143,18 @@ namespace ActiveStateMachine.Generators
                     continue;
                 }
 
-                // Resolve the trigger value text, e.g. "PhoneTrigger.CallDialed".
-                string? triggerText = triggerAttribute.ConstructorArguments.Length > 0
-                    ? triggerAttribute.ConstructorArguments[0].Value as string
-                    : null;
-                if (string.IsNullOrWhiteSpace(triggerText))
+                // Resolve the trigger enum value ([StateTrigger(PhoneTrigger.CallDialed)]) to a
+                // fully-qualified enum member, e.g. global::Ns.PhoneTrigger.CallDialed.
+                TypedConstant triggerArg = triggerAttribute.ConstructorArguments.Length > 0
+                    ? triggerAttribute.ConstructorArguments[0]
+                    : default;
+
+                string? qualifiedTrigger = ResolveTrigger(triggerArg);
+                if (qualifiedTrigger is null)
                 {
                     diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MissingTrigger, methodSyntax, method.Name));
                     continue;
                 }
-
-                // Normalize to a fully-qualified enum member: global::Ns.PhoneTrigger.CallDialed
-                string member = triggerText!.Substring(triggerText.LastIndexOf('.') + 1).Trim();
-                string qualifiedTrigger = $"{triggerTypeName}.{member}";
 
                 // Optional Wait = false named argument: when false the generated trigger method
                 // enqueues the message and returns immediately (async) / does not block (sync),
@@ -197,6 +196,33 @@ namespace ActiveStateMachine.Generators
                 new EquatableArray<TriggerMethodInfo>(methods.ToArray()));
 
             return new GenerationResult(info, kind, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
+        }
+
+        /// <summary>
+        /// Resolves a <c>[StateTrigger(EnumValue)]</c> argument to a fully-qualified enum member
+        /// expression (e.g. <c>global::Ns.PhoneTrigger.CallDialed</c>), or null if it is not a usable
+        /// enum value. Maps the constant's underlying value back to its member name on its enum type.
+        /// </summary>
+        private static string? ResolveTrigger(TypedConstant triggerArg)
+        {
+            if (triggerArg.Kind != TypedConstantKind.Enum ||
+                triggerArg.Type is not INamedTypeSymbol enumType ||
+                triggerArg.Value is null)
+            {
+                return null;
+            }
+
+            string? member = enumType.GetMembers()
+                .OfType<IFieldSymbol>()
+                .FirstOrDefault(f => f.HasConstantValue && Equals(f.ConstantValue, triggerArg.Value))
+                ?.Name;
+            if (member is null)
+            {
+                return null;
+            }
+
+            string enumTypeName = enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return $"{enumTypeName}.{member}";
         }
 
         private static string AccessibilityText(Accessibility accessibility) => accessibility switch

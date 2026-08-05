@@ -159,7 +159,7 @@ public enum BoomTrigger { Explode }
 [ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
 public partial class Boom : IDisposable
 {
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
     public partial void Go();
 
     partial void ConfigureStateMachine()
@@ -177,7 +177,7 @@ public partial class SyncDisposeHook : IDisposable
 {
     public int OnDisposingCalls;
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
     public partial void Go();
 
     partial void ConfigureStateMachine()
@@ -194,7 +194,7 @@ public partial class SyncNoWaitBoom : IDisposable
 {
     public readonly ManualResetEventSlim Entered = new();
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode", Wait = false)]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode, Wait = false)]
     public partial void Go();
 
     partial void ConfigureStateMachine()
@@ -214,7 +214,7 @@ public partial class SyncNamed : IDisposable
 {
     public string? CapturedThreadName;
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
     public partial void Go();
 
     partial void ConfigureStateMachine()

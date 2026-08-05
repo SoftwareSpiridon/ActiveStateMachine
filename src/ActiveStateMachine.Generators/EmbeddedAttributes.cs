@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
@@ -81,7 +81,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
     {
@@ -120,21 +120,25 @@ namespace ActiveStateMachine.Attributes
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.4.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class StateTriggerAttribute : global::System.Attribute
     {
         /// <summary>Creates the attribute.</summary>
         /// <param name="trigger">
-        /// The trigger enum value, written as it appears in source, e.g. "PhoneTrigger.CallDialed".
+        /// The trigger enum value itself, e.g. <c>PhoneTrigger.CallDialed</c>. Passing the value
+        /// (rather than its name as a string) means a renamed enum member is caught at compile time
+        /// and updated by refactoring tools. The parameter is typed <c>object</c> because C# does not
+        /// permit <c>System.Enum</c> as an attribute parameter type (CS0181); the generator still
+        /// requires an enum value and reports a diagnostic for anything else.
         /// </param>
-        public StateTriggerAttribute(string trigger)
+        public StateTriggerAttribute(object trigger)
         {
             Trigger = trigger;
         }
 
-        /// <summary>The trigger enum value expressed as source text.</summary>
-        public string Trigger { get; }
+        /// <summary>The trigger enum value.</summary>
+        public object Trigger { get; }
 
         /// <summary>
         /// Whether the caller waits for the worker to finish processing the trigger. When

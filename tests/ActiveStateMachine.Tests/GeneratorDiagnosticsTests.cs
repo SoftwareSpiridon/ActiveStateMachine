@@ -26,10 +26,10 @@ public class GeneratorDiagnosticsTests
             {
                 partial void ConfigureStateMachine() { }
 
-                [StateTrigger("PhoneTrigger.CallDialed")]
+                [StateTrigger(PhoneTrigger.CallDialed)]
                 public partial Task DialAsync(string number);
 
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public partial Task HangUpAsync();
             }
             """);
@@ -50,10 +50,10 @@ public class GeneratorDiagnosticsTests
             {
                 partial void ConfigureStateMachine() { }
 
-                [StateTrigger("PhoneTrigger.CallDialed")]
+                [StateTrigger(PhoneTrigger.CallDialed)]
                 public partial void Dial(string number);
 
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public partial void HangUp();
             }
             """);
@@ -78,10 +78,10 @@ public class GeneratorDiagnosticsTests
             {
                 partial void ConfigureStateMachine() { }
 
-                [StateTrigger("PhoneTrigger.CallDialed")]
+                [StateTrigger(PhoneTrigger.CallDialed)]
                 public partial void Dial(string number);
 
-                [StateTrigger("PhoneTrigger.HungUp", Wait = false)]
+                [StateTrigger(PhoneTrigger.HungUp, Wait = false)]
                 public partial void HangUp();
             }
             """);
@@ -118,7 +118,7 @@ public class GeneratorDiagnosticsTests
             [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public class Phone
             {
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public partial Task HangUpAsync();
             }
             """);
@@ -134,7 +134,7 @@ public class GeneratorDiagnosticsTests
             [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public partial void HangUp();
             }
             """);
@@ -150,7 +150,7 @@ public class GeneratorDiagnosticsTests
             [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
-                [StateTrigger("PhoneTrigger.CallDialed")]
+                [StateTrigger(PhoneTrigger.CallDialed)]
                 public partial Task DialAsync(int a, int b, int c, int d);
             }
             """);
@@ -166,7 +166,7 @@ public class GeneratorDiagnosticsTests
             [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public Task HangUpAsync() => Task.CompletedTask;
             }
             """);
@@ -182,7 +182,7 @@ public class GeneratorDiagnosticsTests
             [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
             public partial class Phone
             {
-                [StateTrigger("PhoneTrigger.HungUp")]
+                [StateTrigger(PhoneTrigger.HungUp)]
                 public partial Task HangUpAsync();
             }
             """);

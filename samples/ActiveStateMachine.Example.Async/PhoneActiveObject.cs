@@ -25,19 +25,19 @@ public partial class PhoneActiveObject : IAsyncDisposable
     // the message queue entirely from the caller; the generator implements each body.
 
     // Parameterized trigger (1 argument) -> TriggerWithParameters<string>.
-    [StateTrigger("PhoneTrigger.CallDialed")]
+    [StateTrigger(PhoneTrigger.CallDialed)]
     public partial Task DialAsync(string number);
 
-    [StateTrigger("PhoneTrigger.HungUp")]
+    [StateTrigger(PhoneTrigger.HungUp)]
     public partial Task HangUpAsync();
 
-    [StateTrigger("PhoneTrigger.CallConnected")]
+    [StateTrigger(PhoneTrigger.CallConnected)]
     public partial Task ConnectCallAsync();
 
-    [StateTrigger("PhoneTrigger.PlacedOnHold")]
+    [StateTrigger(PhoneTrigger.PlacedOnHold)]
     public partial Task PutOnHoldAsync();
 
-    [StateTrigger("PhoneTrigger.TakenOffHold")]
+    [StateTrigger(PhoneTrigger.TakenOffHold)]
     public partial Task TakeOffHoldAsync();
 
     // The user configures the underlying Stateless machine here. The generator calls this

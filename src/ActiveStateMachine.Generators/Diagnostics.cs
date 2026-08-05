@@ -42,11 +42,11 @@ namespace ActiveStateMachine.Generators
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
-        /// <summary>[StateTrigger] value could not be resolved.</summary>
+        /// <summary>[StateTrigger] value could not be resolved to an enum member.</summary>
         public static readonly DiagnosticDescriptor MissingTrigger = new(
             id: "ASM005",
-            title: "State trigger value is missing",
-            messageFormat: "Method '{0}' is marked with [StateTrigger] but no trigger value was supplied",
+            title: "State trigger must be an enum value",
+            messageFormat: "Method '{0}' is marked with [StateTrigger] but was not given an enum value",
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

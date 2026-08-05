@@ -159,7 +159,7 @@ public partial class AsyncNoWaitBoom : IAsyncDisposable
 {
     public readonly ManualResetEventSlim Entered = new();
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode", Wait = false)]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode, Wait = false)]
     public partial Task GoAsync();
 
     partial void ConfigureStateMachine()
@@ -177,7 +177,7 @@ public partial class AsyncDisposeHook : IAsyncDisposable
 {
     public int OnDisposingCalls;
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
     public partial Task GoAsync();
 
     partial void ConfigureStateMachine()
@@ -194,7 +194,7 @@ public partial class AsyncNamed : IAsyncDisposable
 {
     public string? CapturedName;
 
-    [ActiveStateMachine.Attributes.StateTrigger("BoomTrigger.Explode")]
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
     public partial Task GoAsync();
 
     partial void ConfigureStateMachine()

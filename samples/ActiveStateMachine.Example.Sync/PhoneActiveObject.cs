@@ -29,19 +29,19 @@ public partial class PhoneActiveObject : IDisposable
     // thread has applied the trigger; the generator implements every body.
 
     // Parameterized trigger (1 argument) -> TriggerWithParameters<string>.
-    [StateTrigger("PhoneTrigger.CallDialed")]
+    [StateTrigger(PhoneTrigger.CallDialed)]
     public partial void Dial(string number);
 
-    [StateTrigger("PhoneTrigger.HungUp")]
+    [StateTrigger(PhoneTrigger.HungUp)]
     public partial void HangUp();
 
-    [StateTrigger("PhoneTrigger.CallConnected")]
+    [StateTrigger(PhoneTrigger.CallConnected)]
     public partial void ConnectCall();
 
-    [StateTrigger("PhoneTrigger.PlacedOnHold")]
+    [StateTrigger(PhoneTrigger.PlacedOnHold)]
     public partial void PutOnHold();
 
-    [StateTrigger("PhoneTrigger.TakenOffHold")]
+    [StateTrigger(PhoneTrigger.TakenOffHold)]
     public partial void TakeOffHold();
 
     // The user configures the underlying Stateless machine here. The generator calls this
