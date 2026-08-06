@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
@@ -81,7 +81,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
     {
@@ -120,7 +120,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.5.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class StateTriggerAttribute : global::System.Attribute
     {

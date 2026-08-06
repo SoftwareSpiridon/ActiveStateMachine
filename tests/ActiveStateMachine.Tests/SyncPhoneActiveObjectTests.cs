@@ -139,6 +139,51 @@ public class SyncPhoneActiveObjectTests
     }
 
     [Fact]
+    public void Generic_active_object_class_is_generated_and_works()
+    {
+        using var ao = new SyncGeneric<string>(BoomState.A);
+        ao.Go("hello");
+        Assert.Equal(BoomState.B, ao.State);
+        Assert.Equal("hello", ao.LastPayload);
+    }
+
+    [Fact]
+    public void Dispose_is_idempotent()
+    {
+        var ao = new SyncDisposeHook(BoomState.A);
+
+        ao.Dispose();
+        ao.Dispose(); // second dispose must be a no-op, not throw
+
+        Assert.Equal(1, ao.OnDisposingCalls);
+    }
+
+    [Fact]
+    public void StateTrigger_can_be_an_override_of_an_abstract_base_command()
+    {
+        // The trigger method IS the public override of the base's abstract command — no wrapper.
+        SyncCommandBase ao = new SyncOverrideTrigger(BoomState.A);
+
+        ao.Go();
+
+        Assert.Equal(BoomState.B, ((SyncOverrideTrigger)ao).State);
+        Assert.True(((SyncOverrideTrigger)ao).Fired);
+        ao.Dispose();
+    }
+
+    [Fact]
+    public void Dispose_through_abstract_base_reference_runs_the_generated_override()
+    {
+        // The generated Dispose overrides the base's abstract Dispose, so disposing through a
+        // base-class reference dispatches to it (and runs OnDisposing).
+        SyncDisposeBaseFixture ao = new SyncOverrideDispose(BoomState.A);
+        Assert.Equal(0, ((SyncOverrideDispose)ao).OnDisposingCalls);
+
+        ao.Dispose();
+        Assert.Equal(1, ((SyncOverrideDispose)ao).OnDisposingCalls);
+    }
+
+    [Fact]
     public void Wait_false_trigger_does_not_block_or_throw_and_worker_survives()
     {
         using var ao = new SyncNoWaitBoom(BoomState.A);
@@ -174,6 +219,76 @@ public partial class Boom : IDisposable
 
 [ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
 public partial class SyncDisposeHook : IDisposable
+{
+    public int OnDisposingCalls;
+
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
+    public partial void Go();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+    }
+
+    partial void OnDisposing() => OnDisposingCalls++;
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class SyncGeneric<TPayload> : IDisposable
+{
+    public TPayload? LastPayload;
+
+    public BoomState State => _machine.State;
+
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
+    public partial void Go(TPayload payload);
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        _machine.Configure(BoomState.B)
+            .OnEntryFrom(TriggerGo, payload => LastPayload = payload);
+    }
+}
+
+public abstract class SyncDisposeBaseFixture : IDisposable
+{
+    public abstract void Dispose();
+}
+
+public abstract class SyncCommandBase : IDisposable
+{
+    public abstract void Go();
+
+    public abstract void Dispose();
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class SyncOverrideTrigger : SyncCommandBase
+{
+    public bool Fired;
+
+    public BoomState State => _machine.State;
+
+    // The [StateTrigger] method is itself the override of the base's abstract command.
+    [ActiveStateMachine.Attributes.StateTrigger(BoomTrigger.Explode)]
+    public override partial void Go();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(BoomState.A)
+            .Permit(BoomTrigger.Explode, BoomState.B);
+
+        _machine.Configure(BoomState.B)
+            .OnEntry(() => Fired = true);
+    }
+}
+
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(BoomState), typeof(BoomTrigger))]
+public partial class SyncOverrideDispose : SyncDisposeBaseFixture
 {
     public int OnDisposingCalls;
 

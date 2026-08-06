@@ -34,16 +34,18 @@ namespace ActiveStateMachine.Generators
                 sb.AppendLine("{");
             }
 
-            sb.AppendLine($"{indent}partial class {info.ClassName}");
+            sb.AppendLine($"{indent}partial class {info.ClassName}{info.TypeParameters}{info.TypeParameterConstraints}");
             sb.AppendLine($"{indent}{{");
 
             string b = indent + "    "; // member indent
+            string aoType = info.ClassNameWithTypeParameters; // the Active Object's own (possibly generic) type
 
             // --- 1. Fields ---
             sb.AppendLine($"{b}private readonly {machine} _machine;");
             sb.AppendLine($"{b}private readonly {queueType} _messageQueue;");
             sb.AppendLine($"{b}private readonly global::System.Threading.Thread _workerThread;");
             sb.AppendLine($"{b}private readonly string _name;");
+            sb.AppendLine($"{b}private bool _disposed;");
             sb.AppendLine();
             sb.AppendLine($"{b}/// <summary>The name of this Active Object instance. It is also the name of the background");
             sb.AppendLine($"{b}/// worker <see cref=\"global::System.Threading.Thread\"/>, so it is visible in the debugger.</summary>");
@@ -63,7 +65,7 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}private abstract class {messageBase}");
             sb.AppendLine($"{b}{{");
             sb.AppendLine($"{b}    public global::System.Threading.Tasks.TaskCompletionSource<bool> Tcs {{ get; }} = new global::System.Threading.Tasks.TaskCompletionSource<bool>(global::System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);");
-            sb.AppendLine($"{b}    public abstract void Execute({info.ClassName} ao);");
+            sb.AppendLine($"{b}    public abstract void Execute({aoType} ao);");
             sb.AppendLine($"{b}}}");
             sb.AppendLine();
 
@@ -90,7 +92,7 @@ namespace ActiveStateMachine.Generators
                     sb.AppendLine($"{b}    }}");
                 }
 
-                sb.AppendLine($"{b}    public override void Execute({info.ClassName} ao) => {FireExpression(method)};");
+                sb.AppendLine($"{b}    public override void Execute({aoType} ao) => {FireExpression(method)};");
                 sb.AppendLine($"{b}}}");
                 sb.AppendLine();
             }
@@ -157,7 +159,7 @@ namespace ActiveStateMachine.Generators
                 string sigParams = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
                 string ctorArgs = string.Join(", ", method.Parameters.Select(p => p.Name));
                 string sendMethod = method.Wait ? "SendAndWait" : "Send";
-                sb.AppendLine($"{b}{method.Accessibility} partial void {method.Name}({sigParams})");
+                sb.AppendLine($"{b}{method.Modifiers} partial void {method.Name}({sigParams})");
                 sb.AppendLine($"{b}{{");
                 sb.AppendLine($"{b}    {sendMethod}(new {method.Name}Message({ctorArgs}));");
                 sb.AppendLine($"{b}}}");
@@ -198,8 +200,13 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine();
 
             // --- 9. Disposal ---
-            sb.AppendLine($"{b}public void Dispose()");
+            // 'override' when a base type already exposes an overridable Dispose (so disposal dispatches
+            // through a base reference); otherwise 'virtual' so a derived class may still extend it.
+            string disposeModifier = info.BaseHasOverridableDispose ? "override" : "virtual";
+            sb.AppendLine($"{b}public {disposeModifier} void Dispose()");
             sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    if (_disposed) {{ return; }}");
+            sb.AppendLine($"{b}    _disposed = true;");
             sb.AppendLine($"{b}    OnDisposing();");
             sb.AppendLine($"{b}    _messageQueue.CompleteAdding();");
             sb.AppendLine($"{b}    _workerThread.Join();");

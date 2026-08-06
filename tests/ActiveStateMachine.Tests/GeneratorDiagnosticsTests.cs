@@ -95,6 +95,43 @@ public class GeneratorDiagnosticsTests
     }
 
     [Fact]
+    public void Dispose_is_virtual_by_default_and_override_when_base_declares_it()
+    {
+        var (plainDiagnostics, plain) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+                [StateTrigger(PhoneTrigger.HungUp)]
+                public partial void HangUp();
+            }
+            """);
+        Assert.Empty(plainDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+        string plainPhone = Assert.Single(plain, s => s.Contains("class HangUpMessage"));
+        Assert.Contains("public virtual void Dispose()", plainPhone);
+
+        var (baseDiagnostics, derived) = RunGenerator(Preamble + """
+
+            public abstract class PhoneBase : System.IDisposable
+            {
+                public abstract void Dispose();
+            }
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone : PhoneBase
+            {
+                partial void ConfigureStateMachine() { }
+                [StateTrigger(PhoneTrigger.HungUp)]
+                public partial void HangUp();
+            }
+            """);
+        Assert.Empty(baseDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+        string derivedPhone = Assert.Single(derived, s => s.Contains("class HangUpMessage"));
+        Assert.Contains("public override void Dispose()", derivedPhone);
+    }
+
+    [Fact]
     public void Marker_attributes_are_auto_emitted_into_the_compilation()
     {
         // A bare compilation with no attribute usage and no attributes reference at all.

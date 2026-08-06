@@ -31,10 +31,11 @@ namespace ActiveStateMachine.Generators
                 sb.AppendLine("{");
             }
 
-            sb.AppendLine($"{indent}partial class {info.ClassName}");
+            sb.AppendLine($"{indent}partial class {info.ClassName}{info.TypeParameters}{info.TypeParameterConstraints}");
             sb.AppendLine($"{indent}{{");
 
             string b = indent + "    "; // member indent
+            string aoType = info.ClassNameWithTypeParameters; // the Active Object's own (possibly generic) type
 
             // --- 1. Fields ---
             sb.AppendLine($"{b}private readonly {machine} _machine;");
@@ -42,6 +43,7 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}private readonly global::System.Threading.Tasks.Task _workerTask;");
             sb.AppendLine($"{b}private readonly global::System.Threading.CancellationTokenSource _cts;");
             sb.AppendLine($"{b}private readonly string _name;");
+            sb.AppendLine($"{b}private bool _disposed;");
             sb.AppendLine();
             sb.AppendLine($"{b}/// <summary>The name of the Active Object whose worker is currently running. Set on the worker");
             sb.AppendLine($"{b}/// task and flows with the async execution context, so any code executed by this Active Object");
@@ -66,7 +68,7 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}{{");
             sb.AppendLine($"{b}    public global::System.Threading.Tasks.TaskCompletionSource Tcs {{ get; }} = new(global::System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);");
             sb.AppendLine($"{b}    public global::System.Threading.Tasks.Task Completion => Tcs.Task;");
-            sb.AppendLine($"{b}    public abstract void Execute({info.ClassName} ao);");
+            sb.AppendLine($"{b}    public abstract void Execute({aoType} ao);");
             sb.AppendLine($"{b}}}");
             sb.AppendLine();
 
@@ -76,7 +78,7 @@ namespace ActiveStateMachine.Generators
                 string ctorParams = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
                 sb.AppendLine($"{b}private sealed record {method.Name}Message({ctorParams}) : {messageBase}");
                 sb.AppendLine($"{b}{{");
-                sb.AppendLine($"{b}    public override void Execute({info.ClassName} ao) => {FireExpression(method)};");
+                sb.AppendLine($"{b}    public override void Execute({aoType} ao) => {FireExpression(method)};");
                 sb.AppendLine($"{b}}}");
                 sb.AppendLine();
             }
@@ -147,7 +149,7 @@ namespace ActiveStateMachine.Generators
             {
                 string sigParams = string.Join(", ", method.Parameters.Select(p => $"{p.Type} {p.Name}"));
                 string ctorArgs = string.Join(", ", method.Parameters.Select(p => p.Name));
-                sb.AppendLine($"{b}{method.Accessibility} partial global::System.Threading.Tasks.Task {method.Name}({sigParams})");
+                sb.AppendLine($"{b}{method.Modifiers} partial global::System.Threading.Tasks.Task {method.Name}({sigParams})");
                 sb.AppendLine($"{b}{{");
                 sb.AppendLine($"{b}    var __msg = new {method.Name}Message({ctorArgs});");
                 if (method.Wait)
@@ -176,8 +178,13 @@ namespace ActiveStateMachine.Generators
             }
 
             // --- 8. Async disposal ---
-            sb.AppendLine($"{b}public async global::System.Threading.Tasks.ValueTask DisposeAsync()");
+            // 'override' when a base type already exposes an overridable DisposeAsync (so disposal
+            // dispatches through a base reference); otherwise 'virtual'.
+            string disposeModifier = info.BaseHasOverridableDisposeAsync ? "override" : "virtual";
+            sb.AppendLine($"{b}public {disposeModifier} async global::System.Threading.Tasks.ValueTask DisposeAsync()");
             sb.AppendLine($"{b}{{");
+            sb.AppendLine($"{b}    if (_disposed) {{ return; }}");
+            sb.AppendLine($"{b}    _disposed = true;");
             sb.AppendLine($"{b}    OnDisposing();");
             sb.AppendLine($"{b}    _messageQueue.Writer.TryComplete();");
             sb.AppendLine($"{b}    try");

@@ -129,11 +129,22 @@ namespace ActiveStateMachine.Generators
                 }
 
                 // Rule: the method must be partial.
-                if (methodSyntax is MethodDeclarationSyntax mds && !mds.Modifiers.Any(SyntaxKind.PartialKeyword))
+                var mds = methodSyntax as MethodDeclarationSyntax;
+                if (mds != null && !mds.Modifiers.Any(SyntaxKind.PartialKeyword))
                 {
                     diagnostics.Add(DiagnosticInfo.Create(Diagnostics.MustBePartial, methodSyntax, method.Name));
                     continue;
                 }
+
+                // Reproduce the user's declaration modifiers (accessibility plus any override / virtual
+                // / sealed / new) so the generated implementing partial matches the defining one — this
+                // lets a trigger method itself be the public/override entry point (no wrapper needed).
+                // 'partial' is excluded because the emitter appends it.
+                string modifiers = mds == null
+                    ? AccessibilityText(method.DeclaredAccessibility)
+                    : string.Join(" ", mds.Modifiers
+                        .Where(m => !m.IsKind(SyntaxKind.PartialKeyword))
+                        .Select(m => m.Text));
 
                 // Rule: at most 3 parameters.
                 if (method.Parameters.Length > MaxParameters)
@@ -176,7 +187,7 @@ namespace ActiveStateMachine.Generators
 
                 methods.Add(new TriggerMethodInfo(
                     method.Name,
-                    AccessibilityText(method.DeclaredAccessibility),
+                    modifiers,
                     qualifiedTrigger,
                     wait,
                     new EquatableArray<ParameterInfo>(parameters)));
@@ -189,10 +200,14 @@ namespace ActiveStateMachine.Generators
             var info = new ActiveObjectInfo(
                 ns,
                 classSymbol.Name,
+                TypeParametersText(classSymbol),
+                TypeParameterConstraintsText(classSymbol),
                 AccessibilityText(classSymbol.DeclaredAccessibility),
                 stateTypeName,
                 triggerTypeName,
                 name,
+                BaseHasOverridableMethod(classSymbol, "Dispose", isVoid: true),
+                BaseHasOverridableMethod(classSymbol, "DisposeAsync", isVoid: false),
                 new EquatableArray<TriggerMethodInfo>(methods.ToArray()));
 
             return new GenerationResult(info, kind, new EquatableArray<DiagnosticInfo>(diagnostics.ToArray()));
@@ -223,6 +238,102 @@ namespace ActiveStateMachine.Generators
 
             string enumTypeName = enumType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             return $"{enumTypeName}.{member}";
+        }
+
+        /// <summary>
+        /// True if a base type (excluding the class itself and <c>object</c>) declares an accessible,
+        /// overridable (virtual or abstract, non-sealed) parameterless method with the given name — so
+        /// the generated disposal method must be emitted as <c>override</c> rather than <c>virtual</c>.
+        /// </summary>
+        private static bool BaseHasOverridableMethod(INamedTypeSymbol classSymbol, string methodName, bool isVoid)
+        {
+            for (INamedTypeSymbol? type = classSymbol.BaseType;
+                 type is not null && type.SpecialType != SpecialType.System_Object;
+                 type = type.BaseType)
+            {
+                foreach (IMethodSymbol method in type.GetMembers(methodName).OfType<IMethodSymbol>())
+                {
+                    if (method.Parameters.Length != 0 || method.IsStatic ||
+                        method.DeclaredAccessibility == Accessibility.Private)
+                    {
+                        continue;
+                    }
+
+                    if (!method.IsVirtual && !method.IsAbstract && !method.IsOverride)
+                    {
+                        continue;
+                    }
+
+                    if (method.IsSealed)
+                    {
+                        continue;
+                    }
+
+                    bool returnsVoid = method.ReturnsVoid;
+                    if (isVoid == returnsVoid)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>The class's type-parameter list, e.g. <c>&lt;T1, T2&gt;</c>, or empty if non-generic.</summary>
+        private static string TypeParametersText(INamedTypeSymbol classSymbol)
+        {
+            if (classSymbol.TypeParameters.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return "<" + string.Join(", ", classSymbol.TypeParameters.Select(tp => tp.Name)) + ">";
+        }
+
+        /// <summary>
+        /// The <c>where</c> constraint clauses for the class's type parameters (each prefixed with a
+        /// space), reproduced so the generated partial declaration matches the user's declaration.
+        /// </summary>
+        private static string TypeParameterConstraintsText(INamedTypeSymbol classSymbol)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (ITypeParameterSymbol tp in classSymbol.TypeParameters)
+            {
+                var parts = new List<string>();
+
+                if (tp.HasReferenceTypeConstraint)
+                {
+                    parts.Add("class");
+                }
+
+                if (tp.HasValueTypeConstraint)
+                {
+                    parts.Add(tp.HasUnmanagedTypeConstraint ? "unmanaged" : "struct");
+                }
+
+                if (tp.HasNotNullConstraint)
+                {
+                    parts.Add("notnull");
+                }
+
+                foreach (ITypeSymbol constraintType in tp.ConstraintTypes)
+                {
+                    parts.Add(constraintType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+                }
+
+                if (tp.HasConstructorConstraint)
+                {
+                    parts.Add("new()");
+                }
+
+                if (parts.Count > 0)
+                {
+                    sb.Append($" where {tp.Name} : {string.Join(", ", parts)}");
+                }
+            }
+
+            return sb.ToString();
         }
 
         private static string AccessibilityText(Accessibility accessibility) => accessibility switch

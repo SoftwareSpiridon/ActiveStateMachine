@@ -6,7 +6,7 @@ namespace ActiveStateMachine.Generators
     /// <summary>A method marked with [StateTrigger].</summary>
     internal sealed record TriggerMethodInfo(
         string Name,
-        string Accessibility,
+        string Modifiers,
         string Trigger,
         bool Wait,
         EquatableArray<ParameterInfo> Parameters)
@@ -20,9 +20,17 @@ namespace ActiveStateMachine.Generators
     internal sealed record ActiveObjectInfo(
         string? Namespace,
         string ClassName,
+        string TypeParameters,
+        string TypeParameterConstraints,
         string Accessibility,
         string StateType,
         string TriggerType,
         string? Name,
-        EquatableArray<TriggerMethodInfo> Methods);
+        bool BaseHasOverridableDispose,
+        bool BaseHasOverridableDisposeAsync,
+        EquatableArray<TriggerMethodInfo> Methods)
+    {
+        /// <summary>The class name with its type-parameter list, e.g. <c>Foo&lt;T&gt;</c>.</summary>
+        public string ClassNameWithTypeParameters => ClassName + TypeParameters;
+    }
 }
