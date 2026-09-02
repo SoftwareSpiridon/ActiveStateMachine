@@ -67,7 +67,7 @@ Active Object looks the same.
 [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
 public partial class PhoneActiveObject : IAsyncDisposable
 {
-    [StateTrigger("PhoneTrigger.CallDialed")]
+    [StateTrigger(PhoneTrigger.CallDialed)]
     public partial Task DialAsync(string number);
 
     partial void ConfigureStateMachine() { /* wire up Stateless here */ }
@@ -203,14 +203,14 @@ public partial class Door : IAsyncDisposable
 ```
 
 **2. Declare the public trigger API.** Each public entry point is a `partial` method returning
-`Task`, decorated with `[StateTrigger("…")]`. Zero parameters → a plain trigger; one parameter →
+`Task`, decorated with `[StateTrigger(…)]`. Zero parameters → a plain trigger; one parameter →
 a `TriggerWithParameters<T>`.
 
 ```csharp
-[StateTrigger("DoorTrigger.OpenDoor")]
+[StateTrigger(DoorTrigger.OpenDoor)]
 public partial Task OpenAsync();
 
-[StateTrigger("DoorTrigger.Lock")]
+[StateTrigger(DoorTrigger.Lock)]
 public partial Task LockAsync(string pinCode);   // parameterized trigger
 ```
 
@@ -284,10 +284,10 @@ trigger field drops the `Async` suffix to match the method name (`TriggerLock`):
 [ActiveObjectSync(typeof(DoorState), typeof(DoorTrigger))]
 public partial class Door : IDisposable
 {
-    [StateTrigger("DoorTrigger.OpenDoor")]
+    [StateTrigger(DoorTrigger.OpenDoor)]
     public partial void Open();
 
-    [StateTrigger("DoorTrigger.Lock")]
+    [StateTrigger(DoorTrigger.Lock)]
     public partial void Lock(string pinCode);   // -> OnEntryFrom(TriggerLock, …)
 
     partial void ConfigureStateMachine() { /* identical Stateless configuration */ }
@@ -298,6 +298,41 @@ using var door = new Door(DoorState.Open);
 door.Close();
 door.Lock("1234");
 ```
+
+### The idle tick
+
+A sync Active Object can also drive a trigger *itself* whenever its mailbox goes quiet, by setting
+`IdleTimeoutMilliseconds` on that trigger:
+
+```csharp
+[StateTrigger(DoorTrigger.SelfCheck, IdleTimeoutMilliseconds = 200)]
+private partial void SelfCheck();
+```
+
+The worker then waits for a message with that timeout instead of blocking indefinitely, and fires the
+trigger each time the wait expires. Two consequences are worth understanding:
+
+- **It costs no timer, task or thread.** The worker's existing mailbox wait *is* the clock, so the work
+  runs on the worker like every other transition — serialized with your commands, never concurrent
+  with them.
+- **It is idle-driven, not a fixed cadence.** The tick fires when nothing has arrived for the interval,
+  so inbound traffic suppresses it entirely. That is what makes it suited to a periodic self-check
+  such as polling a remote peer for liveness: while messages are already flowing there is nothing to
+  check, and the traffic is itself the evidence.
+
+The trigger method stays callable, which is the easy way to test the tick's effect without waiting for
+one. A tick has no caller, so an exception thrown while processing it has no `Task` to fault; it is
+handed to an optional hook instead, and the worker keeps running either way:
+
+```csharp
+partial void OnIdleTickFailed(Exception exception) => _logger.Warn(exception, "self-check failed");
+```
+
+Constraints, each a build error: the method must be parameterless
+([`ASM007`](#diagnostics)), only one trigger per class may set it ([`ASM008`](#diagnostics)), and it is
+supported on `[ActiveObjectSync]` only ([`ASM009`](#diagnostics)) — the async worker would need a
+linked cancellation per iteration and does not implement it yet. A class that does not opt in emits
+exactly the same code as before.
 
 ## The Phone example
 
@@ -325,19 +360,19 @@ public partial class PhoneActiveObject : IAsyncDisposable
     /// <summary>Current state. Only safe to read between awaited calls.</summary>
     public PhoneState State => _machine.State;
 
-    [StateTrigger("PhoneTrigger.CallDialed")]
+    [StateTrigger(PhoneTrigger.CallDialed)]
     public partial Task DialAsync(string number);   // parameterized
 
-    [StateTrigger("PhoneTrigger.HungUp")]
+    [StateTrigger(PhoneTrigger.HungUp)]
     public partial Task HangUpAsync();
 
-    [StateTrigger("PhoneTrigger.CallConnected")]
+    [StateTrigger(PhoneTrigger.CallConnected)]
     public partial Task ConnectCallAsync();
 
-    [StateTrigger("PhoneTrigger.PlacedOnHold")]
+    [StateTrigger(PhoneTrigger.PlacedOnHold)]
     public partial Task PutOnHoldAsync();
 
-    [StateTrigger("PhoneTrigger.TakenOffHold")]
+    [StateTrigger(PhoneTrigger.TakenOffHold)]
     public partial Task TakeOffHoldAsync();
 
     partial void ConfigureStateMachine()
@@ -523,12 +558,13 @@ Both take the same constructor arguments and expose the same properties:
 | `Name` (attribute, optional) | Default name for the type. |
 | `Name` (instance property) | The resolved name of this instance. |
 
-### `[StateTrigger(string trigger)]`
+### `[StateTrigger(object trigger)]`
 
 Applied to a `partial` trigger method (`partial Task …` on an async class, `partial void …` on a sync
-class). `trigger` is the enum value **written as source text**, e.g. `"PhoneTrigger.CallDialed"`. The
-generator normalizes it to a fully-qualified reference, so the plain member name (`"CallDialed"`)
-works too.
+class). `trigger` is the enum **value itself**, e.g. `PhoneTrigger.CallDialed`, so a renamed member is
+caught at compile time and updated by refactoring tools. The parameter is typed `object` only because
+C# does not permit `System.Enum` as an attribute parameter type (CS0181); the generator requires an
+enum value and reports [`ASM005`](#diagnostics) for anything else.
 
 | Method shape (async / sync) | Maps to |
 | --- | --- |
@@ -536,6 +572,13 @@ works too.
 | `… Foo(T a)` | `_machine.Fire(TriggerFoo, a)` |
 | `… Foo(T1 a, T2 b)` | `_machine.Fire(TriggerFoo, a, b)` |
 | `… Foo(T1 a, T2 b, T3 c)` | `_machine.Fire(TriggerFoo, a, b, c)` |
+
+Named arguments:
+
+| Property | Default | Effect |
+| --- | --- | --- |
+| `Wait` | `true` | When `false` the method only enqueues and returns immediately; the caller neither blocks nor observes processing exceptions. Use it for triggers fired from another Active Object's worker thread, where blocking risks a cross-object deadlock. |
+| `IdleTimeoutMilliseconds` | `0` | When positive, the worker also fires this trigger itself after that long with an empty mailbox — see [The idle tick](#the-idle-tick). Sync only. |
 
 ### Generated members available to your code
 
@@ -556,7 +599,7 @@ through to `Fire`. Up to **three** parameters are supported (Stateless's native 
 with **more than three** parameters is a compile error ([`ASM003`](#diagnostics)).
 
 ```csharp
-[StateTrigger("OvenTrigger.SetProgram")]
+[StateTrigger(OvenTrigger.SetProgram)]
 public partial Task SetProgramAsync(int minutes, int celsius);   // -> TriggerWithParameters<int, int>
 ```
 
@@ -597,6 +640,9 @@ The generator reports build errors for misuse so problems surface at compile tim
 | `ASM004` | Error | `[StateTrigger]` method is not `partial`. |
 | `ASM005` | Error | `[StateTrigger]` supplies no trigger value. |
 | `ASM006` | Error | `[StateTrigger]` on an `[ActiveObjectSync]` class does not return `void`. |
+| `ASM007` | Error | `[StateTrigger]` sets `IdleTimeoutMilliseconds` on a method with parameters. |
+| `ASM008` | Error | More than one `[StateTrigger]` in a class sets `IdleTimeoutMilliseconds`. |
+| `ASM009` | Error | `[StateTrigger]` sets `IdleTimeoutMilliseconds` on an `[ActiveObjectAsync]` class. |
 
 ## Project layout
 
@@ -667,12 +713,15 @@ Current, intentional V1 scope:
   results yet.
 - The target class must be top-level (nested classes are not yet handled).
 - Up to 3 trigger parameters (Stateless's native limit).
+- [The idle tick](#the-idle-tick) is `[ActiveObjectSync]` only.
 
 Ideas on the roadmap:
 
 - [x] Package as a single NuGet package. See [PUBLISHING.md](PUBLISHING.md).
 - [x] Auto-emit the marker attributes into the consuming compilation for an analyzer-only package
       (only `Stateless` remains as a dependency).
+- [x] An idle tick driven by the worker's own mailbox wait, with no extra timer or thread.
+- [ ] The idle tick for `[ActiveObjectAsync]` (needs a linked cancellation per iteration).
 - [ ] Publish signed / source-linked builds via CI.
 - [ ] Optional factory / parameterless-constructor patterns and a configurable initial state.
 - [ ] `Task<T>` results for triggers that produce a value.

@@ -40,7 +40,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.9.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectAsyncAttribute : global::System.Attribute
     {
@@ -81,7 +81,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>Stateless.StateMachine</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.9.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class ActiveObjectSyncAttribute : global::System.Attribute
     {
@@ -120,7 +120,7 @@ namespace ActiveStateMachine.Attributes
     /// <c>TriggerWithParameters</c>.
     /// </remarks>
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.8.0")]
+    [global::System.CodeDom.Compiler.GeneratedCode("ActiveStateMachine.Generators", "1.9.0")]
     [global::System.Diagnostics.DebuggerNonUserCode]
     internal sealed class StateTriggerAttribute : global::System.Attribute
     {
@@ -150,6 +150,29 @@ namespace ActiveStateMachine.Attributes
         /// deadlock.
         /// </summary>
         public bool Wait { get; set; } = true;
+
+        /// <summary>
+        /// When greater than zero, the worker fires this trigger by itself whenever its mailbox has
+        /// been idle for this many milliseconds — in addition to the trigger method remaining
+        /// callable. Zero (the default) means no idle tick.
+        /// </summary>
+        /// <remarks>
+        /// The tick is <i>idle-driven</i>, not a fixed cadence: it fires when nothing has arrived for
+        /// the interval, so inbound traffic suppresses it. That makes it suited to a periodic
+        /// self-check which costs nothing while messages are already flowing, and it needs no timer,
+        /// thread or task of its own — the worker's existing mailbox wait is the clock.
+        /// <para>
+        /// Constraints, each reported as a build error: the method must take no parameters (the worker
+        /// fires it with no arguments), at most one trigger per class may set it (the worker has a
+        /// single mailbox wait), and it is supported on <c>[ActiveObjectSync]</c> only.
+        /// </para>
+        /// <para>
+        /// A tick has no caller to hand an exception to, so one thrown while processing it is passed
+        /// to the optional <c>partial void OnIdleTickFailed(System.Exception)</c> hook instead of
+        /// faulting anything.
+        /// </para>
+        /// </remarks>
+        public int IdleTimeoutMilliseconds { get; set; }
     }
 }
 """;

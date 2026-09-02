@@ -171,11 +171,50 @@ namespace ActiveStateMachine.Generators
                 // enqueues the message and returns immediately (async) / does not block (sync),
                 // instead of waiting for the worker to process it. Defaults to true.
                 bool wait = true;
+
+                // Optional IdleTimeoutMilliseconds named argument: when positive the worker also fires
+                // this trigger itself after that long with an empty mailbox. Zero means no idle tick.
+                int idleTimeout = 0;
                 foreach (KeyValuePair<string, TypedConstant> named in triggerAttribute.NamedArguments)
                 {
                     if (named.Key == "Wait" && named.Value.Value is bool b)
                     {
                         wait = b;
+                    }
+                    else if (named.Key == "IdleTimeoutMilliseconds" && named.Value.Value is int ms)
+                    {
+                        idleTimeout = ms;
+                    }
+                }
+
+                if (idleTimeout > 0)
+                {
+                    // Only the sync worker has a bounded mailbox wait to hang the tick on; the async
+                    // flavour would need a linked cancellation per iteration. Fail loudly rather than
+                    // emit a class that silently never ticks.
+                    if (kind == ActiveObjectKind.Async)
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(
+                            Diagnostics.IdleTriggerSyncOnly, methodSyntax, method.Name));
+                        continue;
+                    }
+
+                    // The worker fires it as _machine.Fire(trigger), with nothing to pass.
+                    if (method.Parameters.Length > 0)
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(
+                            Diagnostics.IdleTriggerMustBeParameterless, methodSyntax, method.Name,
+                            method.Parameters.Length.ToString()));
+                        continue;
+                    }
+
+                    TriggerMethodInfo? existingIdle = methods.FirstOrDefault(m => m.IsIdleTrigger);
+                    if (existingIdle is not null)
+                    {
+                        diagnostics.Add(DiagnosticInfo.Create(
+                            Diagnostics.DuplicateIdleTrigger, methodSyntax, classSymbol.Name,
+                            existingIdle.Name, method.Name));
+                        continue;
                     }
                 }
 
@@ -190,6 +229,7 @@ namespace ActiveStateMachine.Generators
                     modifiers,
                     qualifiedTrigger,
                     wait,
+                    idleTimeout,
                     new EquatableArray<ParameterInfo>(parameters)));
             }
 

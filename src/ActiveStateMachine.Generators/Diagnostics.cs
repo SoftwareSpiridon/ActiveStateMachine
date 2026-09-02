@@ -59,5 +59,38 @@ namespace ActiveStateMachine.Generators
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// An idle trigger takes no parameters: the worker fires it with no arguments, so it cannot be
+        /// a <c>TriggerWithParameters</c>.
+        /// </summary>
+        public static readonly DiagnosticDescriptor IdleTriggerMustBeParameterless = new(
+            id: "ASM007",
+            title: "Idle state trigger method must have no parameters",
+            messageFormat: "Method '{0}' sets IdleTimeoutMilliseconds and has {1} parameters; the worker fires an idle trigger with no arguments, so it must be parameterless",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>The worker has a single mailbox wait, so it can drive only one idle trigger.</summary>
+        public static readonly DiagnosticDescriptor DuplicateIdleTrigger = new(
+            id: "ASM008",
+            title: "Only one idle state trigger is allowed per Active Object",
+            messageFormat: "Class '{0}' declares more than one [StateTrigger] with IdleTimeoutMilliseconds ('{1}' and '{2}'); the worker has a single mailbox wait and can drive only one",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// The idle tick is implemented for the sync flavour only. Reported rather than ignored so it
+        /// fails loudly instead of silently never ticking.
+        /// </summary>
+        public static readonly DiagnosticDescriptor IdleTriggerSyncOnly = new(
+            id: "ASM009",
+            title: "Idle state trigger is supported on [ActiveObjectSync] only",
+            messageFormat: "Method '{0}' sets IdleTimeoutMilliseconds, which is only supported on an [ActiveObjectSync] class",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

@@ -131,21 +131,75 @@ namespace ActiveStateMachine.Generators
             sb.AppendLine($"{b}partial void OnDisposing();");
             sb.AppendLine();
 
+            // At most one idle trigger per class (enforced by ASM008), so First is the only one.
+            TriggerMethodInfo? idle = info.Methods.FirstOrDefault(m => m.IsIdleTrigger);
+            if (idle is not null)
+            {
+                // Partial hook for an exception thrown while processing an idle tick. A tick has no
+                // caller and therefore no TaskCompletionSource to fault, so this is the only place it
+                // can surface. An unimplemented partial is elided, so it is optional.
+                sb.AppendLine($"{b}partial void OnIdleTickFailed(global::System.Exception exception);");
+                sb.AppendLine();
+            }
+
             // --- 6. Worker loop (dedicated thread) ---
             sb.AppendLine($"{b}private void ProcessMessages()");
             sb.AppendLine($"{b}{{");
-            sb.AppendLine($"{b}    foreach (var msg in _messageQueue.GetConsumingEnumerable())");
-            sb.AppendLine($"{b}    {{");
-            sb.AppendLine($"{b}        try");
-            sb.AppendLine($"{b}        {{");
-            sb.AppendLine($"{b}            msg.Execute(this);");
-            sb.AppendLine($"{b}            msg.Tcs.SetResult(true);");
-            sb.AppendLine($"{b}        }}");
-            sb.AppendLine($"{b}        catch (global::System.Exception ex)");
-            sb.AppendLine($"{b}        {{");
-            sb.AppendLine($"{b}            msg.Tcs.SetException(ex);");
-            sb.AppendLine($"{b}        }}");
-            sb.AppendLine($"{b}    }}");
+            if (idle is null)
+            {
+                sb.AppendLine($"{b}    foreach (var msg in _messageQueue.GetConsumingEnumerable())");
+                sb.AppendLine($"{b}    {{");
+                sb.AppendLine($"{b}        try");
+                sb.AppendLine($"{b}        {{");
+                sb.AppendLine($"{b}            msg.Execute(this);");
+                sb.AppendLine($"{b}            msg.Tcs.SetResult(true);");
+                sb.AppendLine($"{b}        }}");
+                sb.AppendLine($"{b}        catch (global::System.Exception ex)");
+                sb.AppendLine($"{b}        {{");
+                sb.AppendLine($"{b}            msg.Tcs.SetException(ex);");
+                sb.AppendLine($"{b}        }}");
+                sb.AppendLine($"{b}    }}");
+            }
+            else
+            {
+                // A bounded wait instead of GetConsumingEnumerable, so an empty mailbox is itself the
+                // clock. IsCompleted is IsAddingCompleted && Count == 0: once Dispose has called
+                // CompleteAdding and the queue has drained, TryTake returns false at once and the loop
+                // exits, so disposal is unaffected. TryTake also cannot race Dispose(), because
+                // Dispose only disposes the queue after joining this thread.
+                sb.AppendLine($"{b}    while (!_messageQueue.IsCompleted)");
+                sb.AppendLine($"{b}    {{");
+                sb.AppendLine($"{b}        if (_messageQueue.TryTake(out var msg, {idle.IdleTimeoutMilliseconds}))");
+                sb.AppendLine($"{b}        {{");
+                sb.AppendLine($"{b}            try");
+                sb.AppendLine($"{b}            {{");
+                sb.AppendLine($"{b}                msg.Execute(this);");
+                sb.AppendLine($"{b}                msg.Tcs.SetResult(true);");
+                sb.AppendLine($"{b}            }}");
+                sb.AppendLine($"{b}            catch (global::System.Exception ex)");
+                sb.AppendLine($"{b}            {{");
+                sb.AppendLine($"{b}                msg.Tcs.SetException(ex);");
+                sb.AppendLine($"{b}            }}");
+                sb.AppendLine($"{b}        }}");
+                sb.AppendLine($"{b}        else if (!_messageQueue.IsCompleted)");
+                sb.AppendLine($"{b}        {{");
+                sb.AppendLine($"{b}            // Nothing arrived within the idle timeout. Fired directly rather than");
+                sb.AppendLine($"{b}            // enqueued: the mailbox was empty by definition, and there is no caller to");
+                sb.AppendLine($"{b}            // hand a result or an exception to - hence the hook rather than a");
+                sb.AppendLine($"{b}            // TaskCompletionSource. The catch is load-bearing: an escaping exception");
+                sb.AppendLine($"{b}            // would end this thread and silently stop the Active Object for good.");
+                sb.AppendLine($"{b}            try");
+                sb.AppendLine($"{b}            {{");
+                sb.AppendLine($"{b}                _machine.Fire({idle.Trigger});");
+                sb.AppendLine($"{b}            }}");
+                sb.AppendLine($"{b}            catch (global::System.Exception ex)");
+                sb.AppendLine($"{b}            {{");
+                sb.AppendLine($"{b}                OnIdleTickFailed(ex);");
+                sb.AppendLine($"{b}            }}");
+                sb.AppendLine($"{b}        }}");
+                sb.AppendLine($"{b}    }}");
+            }
+
             sb.AppendLine($"{b}}}");
             sb.AppendLine();
 

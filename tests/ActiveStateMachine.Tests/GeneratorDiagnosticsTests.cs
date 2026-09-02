@@ -227,6 +227,142 @@ public class GeneratorDiagnosticsTests
         Assert.Contains(diagnostics, d => d.Id == "ASM006");
     }
 
+
+    // --- Idle tick ---
+
+    [Fact]
+    public void Idle_trigger_emits_a_bounded_mailbox_wait_and_the_failure_hook()
+    {
+        var (diagnostics, generated) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.HungUp, IdleTimeoutMilliseconds = 250)]
+                private partial void Tick();
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+
+        string phone = Assert.Single(generated, s => s.Contains("class TickMessage"));
+        Assert.Contains("while (!_messageQueue.IsCompleted)", phone);
+        Assert.Contains("_messageQueue.TryTake(out var msg, 250)", phone);
+        Assert.Contains("partial void OnIdleTickFailed(global::System.Exception exception);", phone);
+        Assert.Contains("OnIdleTickFailed(ex);", phone);
+
+        // The bounded wait replaces the blocking enumerator, it does not sit alongside it.
+        Assert.DoesNotContain("GetConsumingEnumerable", phone);
+
+        // Still an ordinary callable trigger, which is what lets a test force a tick.
+        Assert.Contains("private partial void Tick()", phone);
+    }
+
+    [Fact]
+    public void Without_an_idle_trigger_the_worker_loop_is_unchanged()
+    {
+        // The no-regression guard: every existing Active Object must keep the blocking enumerator and
+        // gain no hook, so adding this feature cannot change code that does not ask for it.
+        var (diagnostics, generated) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.HungUp)]
+                public partial void HangUp();
+            }
+            """);
+
+        Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+
+        string phone = Assert.Single(generated, s => s.Contains("class HangUpMessage"));
+        Assert.Contains("foreach (var msg in _messageQueue.GetConsumingEnumerable())", phone);
+        Assert.DoesNotContain("TryTake", phone);
+        Assert.DoesNotContain("OnIdleTickFailed", phone);
+    }
+
+    [Fact]
+    public void Zero_idle_timeout_is_not_an_idle_trigger()
+    {
+        // Zero is the default and means "no idle tick" rather than "tick as fast as possible".
+        var (_, generated) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.HungUp, IdleTimeoutMilliseconds = 0)]
+                public partial void HangUp();
+            }
+            """);
+
+        string phone = Assert.Single(generated, s => s.Contains("class HangUpMessage"));
+        Assert.Contains("GetConsumingEnumerable", phone);
+        Assert.DoesNotContain("TryTake", phone);
+    }
+
+    [Fact]
+    public void Parameterized_idle_trigger_reports_ASM007()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.CallDialed, IdleTimeoutMilliseconds = 250)]
+                public partial void Tick(int beats);
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM007");
+    }
+
+    [Fact]
+    public void Two_idle_triggers_report_ASM008()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObjectSync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.CallDialed, IdleTimeoutMilliseconds = 250)]
+                public partial void TickOne();
+
+                [StateTrigger(PhoneTrigger.HungUp, IdleTimeoutMilliseconds = 250)]
+                public partial void TickTwo();
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM008");
+    }
+
+    [Fact]
+    public void Idle_trigger_on_an_async_class_reports_ASM009()
+    {
+        var (diagnostics, _) = RunGenerator(Preamble + """
+
+            [ActiveObjectAsync(typeof(PhoneState), typeof(PhoneTrigger))]
+            public partial class Phone
+            {
+                partial void ConfigureStateMachine() { }
+
+                [StateTrigger(PhoneTrigger.HungUp, IdleTimeoutMilliseconds = 250)]
+                public partial Task TickAsync();
+            }
+            """);
+
+        Assert.Contains(diagnostics, d => d.Id == "ASM009");
+    }
+
     private static (ImmutableArray<Diagnostic> Diagnostics, string[] Generated) RunGenerator(string source)
     {
         // Note: no reference to any attributes assembly — the generator injects the marker

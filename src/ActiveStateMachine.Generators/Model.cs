@@ -9,11 +9,18 @@ namespace ActiveStateMachine.Generators
         string Modifiers,
         string Trigger,
         bool Wait,
+        int IdleTimeoutMilliseconds,
         EquatableArray<ParameterInfo> Parameters)
     {
         public int ParameterCount => Parameters.Count;
 
         public bool IsParameterized => Parameters.Count > 0;
+
+        /// <summary>
+        /// True when the worker should fire this trigger itself after an idle mailbox wait, rather
+        /// than only when the trigger method is called.
+        /// </summary>
+        public bool IsIdleTrigger => IdleTimeoutMilliseconds > 0;
     }
 
     /// <summary>A class marked with an Active Object attribute, fully described for emission.</summary>

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using ActiveStateMachine.Example.Sync;
 using Xunit;
@@ -195,6 +196,109 @@ public class SyncPhoneActiveObjectTests
         // The worker still processed the message (and survived the thrown exception).
         Assert.True(ao.Entered.Wait(TimeSpan.FromSeconds(5)));
     }
+
+    // --- Idle tick ---
+
+    [Fact]
+    public void An_idle_active_object_ticks_by_itself()
+    {
+        using var ao = new Ticker(TickerState.Idling);
+
+        Assert.True(SpinUntil(() => ao.Ticks >= 3, TimeSpan.FromSeconds(5)),
+            $"Expected at least 3 idle ticks, saw {ao.Ticks}");
+    }
+
+    [Fact]
+    public void A_busy_active_object_does_not_tick()
+    {
+        // The tick is idle-driven, not a fixed cadence: while messages keep arriving faster than the
+        // timeout the mailbox never goes quiet, and traffic is itself proof the object is alive.
+        using var ao = new Ticker(TickerState.Idling);
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(Ticker.IdleTimeoutMs * 8);
+        while (DateTime.UtcNow < deadline)
+        {
+            ao.DoWork();
+            Thread.Sleep(Ticker.IdleTimeoutMs / 5);
+        }
+
+        Assert.True(ao.Work > 0, "the fixture never processed any work");
+        Assert.Equal(0, ao.Ticks);
+    }
+
+    [Fact]
+    public void A_throwing_idle_tick_reaches_the_hook_and_the_worker_survives()
+    {
+        using var ao = new Ticker(TickerState.Idling) { TicksThrow = true };
+
+        Assert.True(SpinUntil(() => ao.IdleTickFailures >= 2, TimeSpan.FromSeconds(5)),
+            $"Expected the failure hook to run, saw {ao.IdleTickFailures} failures");
+
+        // The worker is still draining its mailbox, which is the point: a tick that throws has no
+        // caller to fault, and letting it end the thread would silently stop the object for good.
+        ao.TicksThrow = false;
+        ao.DoWork();
+        Assert.True(SpinUntil(() => ao.Work == 1, TimeSpan.FromSeconds(5)), "the worker stopped processing");
+    }
+
+    [Fact]
+    public void A_throwing_idle_tick_is_survivable_without_the_hook()
+    {
+        // OnIdleTickFailed is an unimplemented partial here, so it is elided - the generated catch
+        // must still swallow the exception rather than end the worker.
+        using var ao = new TickerWithoutHook(TickerState.Idling);
+
+        Assert.True(SpinUntil(() => ao.Ticks >= 3, TimeSpan.FromSeconds(5)),
+            $"The worker stopped after a throwing tick; saw {ao.Ticks} ticks");
+    }
+
+    [Fact]
+    public void An_idle_trigger_is_still_callable_directly()
+    {
+        // This is what lets a consumer's tests force a probe instead of sleeping for one.
+        using var ao = new Ticker(TickerState.Idling);
+
+        ao.Tick();
+        ao.Tick();
+
+        Assert.True(ao.Ticks >= 2);
+    }
+
+    [Fact]
+    public void Dispose_stops_the_idle_ticking_promptly()
+    {
+        var ao = new Ticker(TickerState.Idling);
+        Assert.True(SpinUntil(() => ao.Ticks >= 1, TimeSpan.FromSeconds(5)), "never ticked");
+
+        var stopwatch = Stopwatch.StartNew();
+        ao.Dispose();
+        stopwatch.Stop();
+
+        // Dispose completes the queue and joins the worker; the bounded wait means it waits at most
+        // one idle timeout rather than blocking indefinitely.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+            $"Dispose took {stopwatch.Elapsed}");
+
+        int after = ao.Ticks;
+        Thread.Sleep(Ticker.IdleTimeoutMs * 4);
+        Assert.Equal(after, ao.Ticks);
+    }
+
+    private static bool SpinUntil(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            Thread.Sleep(5);
+        }
+
+        return condition();
+    }
 }
 
 public enum BoomState { A, B }
@@ -340,5 +444,76 @@ public partial class SyncNamed : IDisposable
         // Runs on the worker thread, so it observes that thread's name.
         _machine.Configure(BoomState.B)
             .OnEntry(() => CapturedThreadName = Thread.CurrentThread.Name);
+    }
+}
+
+public enum TickerState { Idling }
+
+public enum TickerTrigger { Tick, Work }
+
+/// <summary>
+/// The idle tick under test. The mailbox wait is the only clock: no timer, task or thread beyond the
+/// worker the generator already emits.
+/// </summary>
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(TickerState), typeof(TickerTrigger))]
+public partial class Ticker : IDisposable
+{
+    private int _ticks;
+    private int _work;
+    private int _idleTickFailures;
+
+    /// <summary>Set to make the next tick throw, so the worker's survival can be observed.</summary>
+    public bool TicksThrow { get; set; }
+
+    public int Ticks => Volatile.Read(ref _ticks);
+
+    public int Work => Volatile.Read(ref _work);
+
+    public int IdleTickFailures => Volatile.Read(ref _idleTickFailures);
+
+    public const int IdleTimeoutMs = 50;
+
+    [ActiveStateMachine.Attributes.StateTrigger(TickerTrigger.Tick, IdleTimeoutMilliseconds = IdleTimeoutMs)]
+    public partial void Tick();
+
+    [ActiveStateMachine.Attributes.StateTrigger(TickerTrigger.Work, Wait = false)]
+    public partial void DoWork();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(TickerState.Idling)
+            .InternalTransition(TickerTrigger.Tick, () =>
+            {
+                Interlocked.Increment(ref _ticks);
+                if (TicksThrow)
+                {
+                    throw new InvalidOperationException("tick failed");
+                }
+            })
+            .InternalTransition(TickerTrigger.Work, () => Interlocked.Increment(ref _work));
+    }
+
+    partial void OnIdleTickFailed(Exception exception) => Interlocked.Increment(ref _idleTickFailures);
+}
+
+/// <summary>An idle trigger with no OnIdleTickFailed implementation - the hook must stay optional.</summary>
+[ActiveStateMachine.Attributes.ActiveObjectSync(typeof(TickerState), typeof(TickerTrigger))]
+public partial class TickerWithoutHook : IDisposable
+{
+    private int _ticks;
+
+    public int Ticks => Volatile.Read(ref _ticks);
+
+    [ActiveStateMachine.Attributes.StateTrigger(TickerTrigger.Tick, IdleTimeoutMilliseconds = 20)]
+    public partial void Tick();
+
+    partial void ConfigureStateMachine()
+    {
+        _machine.Configure(TickerState.Idling)
+            .InternalTransition(TickerTrigger.Tick, () =>
+            {
+                Interlocked.Increment(ref _ticks);
+                throw new InvalidOperationException("nobody is listening");
+            });
     }
 }
